@@ -64,7 +64,7 @@ hgt = hImg.memMap()[:,:,0].astype(np.float32)
 # elevations at 4 of the main lakes that we'll mask out
 
 # Mask the rates matrix
-rates[np.where(gamma0_lk<.3)]=np.nan #masks the low coherence areas
+#rates[np.where(gamma0_lk<.3)]=np.nan #masks the low coherence areas
 rates[np.where( (hgt<.1) ) ]=np.nan # masks the lakes
 rates=np.fliplr(rates)
 #rates[np.isnan(rates)]=0
