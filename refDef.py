@@ -21,23 +21,24 @@ with open(tsdir + '/params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
 #badpairs = list(['20161130_20161212','','']) 
 #pairs = np.setxor1d(badpairs,pairs).flatten()
     
-badpairs = list(['20151005_20151029',
-'20151029_20151122',
-'20151122_20151216',
-'20161210_20170103',
-'20170115_20170127',
-'20170127_20170220',
-'20170220_20170304',
-'20170819_20170831',
-'20170831_20170912',
-'20171229_20180110',
-'20180110_20180122',
-'20180311_20180323',
-'20180323_20180404',])
-pairs = np.setxor1d(badpairs,pairs).flatten()
+#badpairs = list(['20151005_20151029',
+#'20151029_20151122',
+#'20151122_20151216',
+#'20161210_20170103',
+#'20170115_20170127',
+#'20170127_20170220',
+#'20170220_20170304',
+#'20170819_20170831',
+#'20170831_20170912',
+#'20171229_20180110',
+#'20180110_20180122',
+#'20180311_20180323',
+#'20180323_20180404',])
+#pairs = np.setxor1d(badpairs,pairs).flatten()
 
 
-gamma0_thresh = .2
+
+gamma0_thresh = .3
 std_thresh = 10
 
 def butter_lowpass(cutoff, fs, order=5):
@@ -118,7 +119,7 @@ plt.hist(std_img, 40, edgecolor='black', linewidth=.2)
 
 
 # Load height file
-h = workdir + 'merged/geom_master/hgt_lk.rdr'
+h = workdir + 'merged/geom_master/hgt_lk.rdr' #make this manually for now with looks.py and run fixImage.py 
 hImg = isceobj.createImage()
 hImg.load(h + '.xml')
 hgt = hImg.memMap()[:,:,0].astype(np.float32)
@@ -146,8 +147,8 @@ for ii in np.arange(0,len(pairs)+1):
 #    pickle.dump(alld_flat, f)
 
 # Plot phase-elevation 
-plt.figure()
-plt.plot(alld_flat[30,msk].flatten(),hgt.flatten()[msk],'.',markersize=1)
+#plt.figure()
+#plt.plot(hgt.flatten()[msk], alld_flat[30,msk].flatten(),'.',markersize=1)
 
 # Do phase-elevation correction
 x=hgt.flatten()[msk]
@@ -164,16 +165,19 @@ for ii in np.arange(0,len(pairs)+1):
 
     
 # Plot example
-plt.plot(x,y,'.',markersize=1)
-plt.plot(hgt.flatten(),y2)
-plt.ylabel('phs')
-plt.xlabel('elevation (m)')
-plt.title('uncorrected phase and best fit')
-plt.figure()
-plt.plot(hgt.flatten(),alld_flat_topo[ii,:],'.',markersize=1)
-plt.ylabel('phs')
-plt.xlabel('elevation (m)')
-plt.title('corrected phase')
+#plt.plot(x,y,'.',markersize=1)
+#plt.plot(hgt.flatten(),y2)
+#plt.ylabel('phs')
+#plt.xlabel('elevation (m)')
+#plt.title('uncorrected phase and best fit')
+#plt.figure()
+#plt.plot(hgt.flatten(),alld_flat_topo[ii,:],'.',markersize=1)
+#plt.ylabel('phs')
+#plt.xlabel('elevation (m)')
+#plt.title('corrected phase')
+#plt.show()
+
+alld_flat_topo=alld_flat
 
 alld_flat_topo = -alld_flat_topo # Make subsidence negative
 
