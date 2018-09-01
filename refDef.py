@@ -174,8 +174,7 @@ plt.plot(hgt.flatten(),alld_flat_topo[ii,:],'.',markersize=1)
 plt.ylabel('phs')
 plt.xlabel('elevation (m)')
 plt.title('corrected phase')
-
+del(alld,alld_filt,alld_flat,Gg,G,std_img,x,y,y2)
 alld_flat_topo = -alld_flat_topo # Make subsidence negative
 
 
-del(alld,alld_filt,alld_flat,Gg,G,std_img,x,y,y2)
