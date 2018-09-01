@@ -19,7 +19,6 @@ import cv2
 import os
 #from mroipac.filter.Filter import Filter
 
-tsdir='/data/kdm95/AK/TS/'
 with open(tsdir + 'params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
     pairs,nd,lam,workdir,intdir,tsdir,ny,nx,nxl,nyl,alks,rlks = pickle.load(f)
 
@@ -89,6 +88,8 @@ for pair in pairs: #loop through each ifg and save to
     # Mask ones where the data is good
     mask = np.ones(rea_lk.shape)
     mask[np.where(gamma0_lk < gamma_thresh)]=0
+   
+#    mask[np.isnan(mask)]=0 #******************** get rid of the boxes?
     
     # Zero bad data
 #    rea_lk[np.where(mask==0)]=0
