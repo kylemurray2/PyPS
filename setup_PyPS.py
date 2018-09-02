@@ -12,6 +12,10 @@ import pickle
 import os
 import isceobj
 from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
+import matplotlib.pyplot as plt
+from mpl_toolkits.basemap import Basemap
 
 #<><><><><><><><><><><><>Set these variables><><><><><><><><><><><><><><><
 # Define area of interest
@@ -39,23 +43,15 @@ flist = glob.glob(intdir + '2*_2*')
 [pairs2.append(f[-8:]) for f in flist]
 pairs.sort();pairs1.sort();pairs2.sort()
 
-
-
-f_hgt = mergeddir + 'geom_master/hgt.rdr.full.vrt'
-f_lat = mergeddir + 'geom_master/lat.rdr.full.vrt'
+# Get width and length
 f_lon = mergeddir + 'geom_master/lon.rdr.full.vrt'
-#hgt_ifg = gdal.Open(f_hgt).ReadAsArray()
-lon_ifg = gdal.Open(f_lon).ReadAsArray()
-#lat_ifg = gdal.Open(f_lat).ReadAsArray()
-#lon = isceobj.createImage()
-#lon.load(f_lon + '.xml')
-#lon_ifg = lon.memMap()[:,:,0]
+lon_info = gdal.Info(f_lon)
+src = gdal.Open(f_lon)
+ulx, xres, xskew, uly, yskew, yres  = src.GetGeoTransform()
+nx = int(ulx + (src.RasterXSize * xres))
+ny = int(uly + (src.RasterYSize * yres))
 
-
-
-# Image dimensions before and after downlooking
 nd = len(pairs) # number of pairs (number of dates minus one?)
-ny,nx = lon_ifg.shape
 nxl = int(np.floor(nx/rlks))
 nyl = int(np.floor(ny/alks))
 
@@ -63,4 +59,84 @@ nyl = int(np.floor(ny/alks))
 with open(tsdir + 'params.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
     pickle.dump([pairs,nd,lam,workdir,intdir,tsdir,ny,nx,nxl,nyl,alks,rlks], f)
 
-del(lon_ifg)
+def downLook(infile, outfile,alks,rlks):
+    inImage = isceobj.createImage()
+    inImage.load(infile + '.xml')
+    inImage.filename = infile
+
+    lkObj = Looks()
+    lkObj.setDownLooks(alks)
+    lkObj.setAcrossLooks(rlks)
+    lkObj.setInputImage(inImage)
+    lkObj.setOutputFilename(outfile)
+    lkObj.looks()
+
+file_list = list(['lat','lon','hgt','los','incLocal'])
+for f in file_list:
+    infile = mergeddir + 'geom_master/' + f + '.rdr.full'
+    outfile = mergeddir + 'geom_master/' + f + '_lk.rdr'
+    downLook(infile, outfile,alks,rlks)
+    
+    
+# Get bounding coordinates (Frame)
+f_lon_lk = mergeddir + 'geom_master/lon_lk.rdr'
+f_lat_lk = mergeddir + 'geom_master/lat_lk.rdr'
+
+Image = isceobj.createImage()
+Image.load(f_lon_lk + '.xml')
+lon_ifg = Image.memMap()[:,:,0]
+lon_ifg = lon_ifg.copy().astype(np.float32)
+lon_ifg[lon_ifg==0]=np.nan
+Image.finalizeImage()
+
+Image = isceobj.createImage()
+Image.load(f_lat_lk + '.xml')
+lat_ifg = Image.memMap()[:,:,0]
+lat_ifg = lat_ifg.copy().astype(np.float32)
+lat_ifg[lat_ifg==0]=np.nan
+Image.finalizeImage()
+
+for l in np.arange(0,nyl):
+    ll = lon_ifg[l,:]
+    if not np.isnan(ll.max()):
+        break
+
+for p in np.arange(l+1,nyl):
+    ll = lon_ifg[p,:]
+    if np.isnan(ll.max()):
+        break
+l+=1
+
+ul = (lon_ifg[l,0],lat_ifg[l,0])
+ur = (lon_ifg[l,-1],lat_ifg[l,-1])
+ll = (lon_ifg[p-1,0],lat_ifg[p-1,0])
+lr = (lon_ifg[p-1,-1],lat_ifg[p-1,-1])
+
+(32.6,32.85,32.85,38.7,38.7,38.45,38.45,32.6)
+
+lons = np.array([ul[0],ur[0],ur[0],lr[0],lr[0],ll[0],ll[0],ul[0]])
+lats = np.array([ul[1],ur[1],ur[1],lr[1],lr[1],ll[1],ll[1],ul[1]])
+
+
+pad=2
+plt.close()
+plt.rc('font',size=14)
+fig = plt.figure(figsize=(6,6))
+m = Basemap(llcrnrlat=lats.min()-pad,urcrnrlat=lats.max()+pad,\
+        llcrnrlon=lons.min()-pad,urcrnrlon=lons.max()+pad,resolution='i',epsg=3395)
+m.arcgisimage(service='World_Shaded_Relief',xpixels=1000)
+m.drawstates(linewidth=1.5,zorder=1,color='white')
+m.drawcountries(linewidth=1.5,zorder=1,color='white')
+m.drawparallels(np.arange(np.floor(lats.min()-pad), np.ceil(lats.max()+pad), 2), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
+m.drawmeridians(np.arange(np.floor(lons.min()-pad), np.ceil(lons.max()+pad),2), linewidth=0,labels=[1,0,0,1])
+m.plot(lons,lats,linewidth=2,latlon=True,color='red',zorder=10)
+plt.title('Extent of stack')
+plt.show()
+#plt.savefig('areamap.png',transparent=True,dpi=300 )
+
+
+
+
+
+
+
