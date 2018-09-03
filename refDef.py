@@ -9,10 +9,9 @@ Created on Mon Aug 13 12:35:54 2018
 import numpy as np
 import isceobj
 import pickle
-import os
 from datetime import date
 from matplotlib import pyplot as plt
-from scipy.signal import butter, lfilter, freqz
+from scipy.signal import butter, lfilter
 
 with open(tsdir + '/params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
     pairs,nd,lam,workdir,intdir,tsdir,ny,nx,nxl,nyl,alks,rlks = pickle.load(f)
@@ -36,41 +35,21 @@ with open(tsdir + '/params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
 #'20180323_20180404',])
 #pairs = np.setxor1d(badpairs,pairs).flatten()
 
+#Crop images
+ymin=369
+ymax=3426
+xmin=29
+xmax=2433
+crop_mask = np.zeros((nyl,nxl))
+crop_mask[ymin:ymax,xmin:xmax] =1
 
+#intitial_reference_point
+c=2100
+r=3242
+idx = ((r-1)*nxl)+c #finds the index of flattened array based on row col in image
 
 gamma0_thresh = .3
 std_thresh = 10
-
-def butter_lowpass(cutoff, fs, order=5):
-    nyq = 0.5 * fs
-    normal_cutoff = cutoff / nyq
-    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    return b, a
-
-def butter_lowpass_filter(data, cutoff, fs, order=5):
-    b, a = butter_lowpass(cutoff, fs, order=order)
-    y = lfilter(b, a, data, axis=1) #Check this axis!
-    return y
-
-
-# Filter requirements.
-order = 8
-fs = 0.066      # sample rate, Hz
-cutoff = 1/180  # desired cutoff frequency of the filter, Hz
-
-# Get the filter coefficients so we can check its frequency response.
-b, a = butter_lowpass(cutoff, fs, order)
-# Plot the frequency response.
-#w, h = freqz(b, a, worN=8000)
-#plt.subplot(2, 1, 1)
-#plt.plot(0.5*fs*w/np.pi, np.abs(h), 'b')
-#plt.plot(cutoff, 0.5*np.sqrt(2), 'ko')
-#plt.axvline(cutoff, color='k')
-#plt.xlim(0, 0.5*fs)
-#plt.title("Lowpass Filter Frequency Response")
-#plt.xlabel('Frequency [Hz]')
-#plt.grid()
-
 
 # Convert pairs to dates
 dn = list()
@@ -92,37 +71,64 @@ for ii,pair in enumerate(pairs): #loop through each ifg and append to alld
     unwImage = isceobj.createIntImage()
     unwImage.load(unw_file + '.xml')
     unwifg = unwImage.memMap()[:,:,0]
-    print(str(unwifg.min()) + ' ' + str(unwifg.max()) + ' ' + pair)
-    alld.append(unwifg.flatten()+alld[ii]) # cumulatively add to the previous image
- 
+    u = unwifg-unwifg[r,c]
+    u *= crop_mask
+    print(str(u.flatten().min()) + ' ' + str(u.flatten().max()) + ' ' + pair)
+    alld.append(u.flatten()+alld[ii]) # cumulatively add to the previous image
+del(u,unwifg)
 # Sum to make cumulative sum stack image
 alld = np.asarray(alld) 
-alld_filt = butter_lowpass_filter(alld, cutoff, fs, order) # check the function for the axis in lfilter
 
- # Filter each image
+# Filter each ifg before calculating the std for referencing.
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data, axis=1) #Check this axis!
+    return y
+
+order = 8
+fs = 0.066      # sample rate, Hz
+cutoff = 1/180  # desired cutoff frequency of the filter, Hz
+alld_filt = butter_lowpass_filter(alld, cutoff, fs, order) # check the function for the axis in lfilter
+alld_filt[alld_filt==0]==np.nan
+alld[alld==0]==np.nan
+
 std_img = np.nanstd(alld_filt,axis=0) # Temporal std
+std_img *= crop_mask.flatten()
+std_img[std_img==0]=np.nan
 plt.imshow(np.reshape(std_img,(nyl,nxl)))
 
+plt.figure()
+for ii in np.arange(0,nd):
+    a = np.reshape(alld[ii],(nyl,nxl))
+    plt.plot(a[:,1000])
+    
+    
 # MASKING______________________________
 # Load gamma0_lk
 f = tsdir + 'gamma0_lk.int'
 intImage = isceobj.createIntImage()
 intImage.load(f + '.xml')
-gamma0_lk= intImage.memMap()[:,:,0] 
+gamma0_lk= intImage.memMap()[:,:,0] * crop_mask
 
 plt.figure()
 plt.hist( gamma0_lk.flatten()[~np.isnan(gamma0_lk.flatten())], 40, edgecolor='black', linewidth=.2)
 plt.title('Phase stability histogram')
 plt.xlabel('Phase stability (1 is good, 0 is bad)')
 plt.figure()
-plt.hist(std_img, 40, edgecolor='black', linewidth=.2)
+plt.hist(std_img[~np.isnan(std_img)], 40, edgecolor='black', linewidth=.2)
 
 
 # Load height file
 h = workdir + 'merged/geom_master/hgt_lk.rdr' #make this manually for now with looks.py and run fixImage.py 
 hImg = isceobj.createImage()
 hImg.load(h + '.xml')
-hgt = hImg.memMap()[:,:,0].astype(np.float32)
+hgt = hImg.memMap()[:,:,0].astype(np.float32) *crop_mask
 hgt[hgt<0]=-1
 ## elevations at 4 of the main lakes that we'll mask out
 #l1 = hgt[2012,133]
@@ -136,9 +142,8 @@ msk = np.where( (std_img < std_thresh) & (gamma0_lk.flatten() > gamma0_thresh) &
 # Remove mean from each image using just the nondeforming pixels
 alld_flat=np.empty(alld.shape)
 for ii in np.arange(0,len(pairs)+1):
-    alld_flat[ii,:] = alld [ii,:] - alld[ii,msk].mean()
+    alld_flat[ii,:] = alld[ii,:] - np.nanmean(alld[ii,msk])
     alld_flat[ii,np.where(hgt.flatten()==-1)]=np.nan
-    
 
 
 #alld_flat=np.reshape(alld,(len(pairs)+1,nyl,nxl))
@@ -152,6 +157,7 @@ for ii in np.arange(0,len(pairs)+1):
 
 # Do phase-elevation correction
 x=hgt.flatten()[msk]
+x*=crop_mask.flatten()[msk]
 G = np.vstack([x, np.ones((len(x),1)).flatten()]).T
 Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
 alld_flat_topo = np.empty(alld_flat.shape)
@@ -165,6 +171,7 @@ for ii in np.arange(0,len(pairs)+1):
 
     
 # Plot example
+plt.figure()
 plt.plot(x,y,'.',markersize=1)
 plt.plot(hgt.flatten(),y2)
 plt.ylabel('phs')
@@ -175,8 +182,10 @@ plt.plot(hgt.flatten(),alld_flat_topo[ii,:],'.',markersize=1)
 plt.ylabel('phs')
 plt.xlabel('elevation (m)')
 plt.title('corrected phase')
-del(alld,alld_filt,alld_flat,Gg,G,std_img,x,y,y2)
 
-alld_flat_topo = -alld_flat_topo # Make subsidence negative
+
+del(alld,alld_filt,Gg,G,std_img,x,y,y2)
+
+alld_flat_topo = -alld_flat # Make subsidence negative
 
 
