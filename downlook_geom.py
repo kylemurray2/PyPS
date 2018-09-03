@@ -7,6 +7,7 @@ downlook the geometry files
 """
 import isceobj
 from mroipac.looks.Looks import Looks
+import pickle
 
 with open(tsdir + 'params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
     pairs,nd,lam,workdir,intdir,tsdir,ny,nx,nxl,nyl,alks,rlks = pickle.load(f)
