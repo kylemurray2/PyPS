@@ -112,8 +112,6 @@ ur = (lon_ifg[l,-1],lat_ifg[l,-1])
 ll = (lon_ifg[p-1,0],lat_ifg[p-1,0])
 lr = (lon_ifg[p-1,-1],lat_ifg[p-1,-1])
 
-(32.6,32.85,32.85,38.7,38.7,38.45,38.45,32.6)
-
 lons = np.array([ul[0],ur[0],ur[0],lr[0],lr[0],ll[0],ll[0],ul[0]])
 lats = np.array([ul[1],ur[1],ur[1],lr[1],lr[1],ll[1],ll[1],ul[1]])
 
