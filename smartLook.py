@@ -53,8 +53,8 @@ out.renderHdr()
 out.renderVRT()
 
 gamma_thresh = .2
-rx=3
-ry=3
+rx=2
+ry=2
 
 gausx = np.exp( np.divide( -np.square(np.arange(-rx,rx)), np.square(rx)));
 gausy = np.exp( np.divide( -np.square(np.arange(-ry,ry)), np.square(ry)));
