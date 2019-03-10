@@ -5,62 +5,45 @@ Created on Fri Aug 31 12:37:39 2018
 
 @author: kdm95
 """
-
+# Global Imports
 import numpy as np
 import isceobj
 import pickle
-import gdal
 import os
+import cv2
 from mpl_toolkits.basemap import Basemap
-from datetime import date
 from matplotlib import pyplot as plt
-from scipy.interpolate import griddata
-from scipy import signal
+import scipy.spatial.qhull as qhull
 import glob
 
+# Local Imports
+from Statistics import structure_function
+#from APS_tools import ifg
 
-with open(tsdir + '/params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
-    pairs,nd,lam,workdir,intdir,tsdir,ny,nx,nxl,nyl,alks,rlks = pickle.load(f)   
 
+with open(tsdir + 'params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
+    pairs,nd,lam,workdir,intdir,tsdir,ny,nx,nxl,nyl,lon_bounds,lat_bounds,ymin,ymax,alks,rlks = pickle.load(f)   
 
-lon_gac_min=-118
+do_wrapped = 2 # 1 if you want to apply correction to wrapped data. 0 for unwrapped. 
+
+lon_gac_min=-119
 lon_gac_max=-116
 lat_gac_min=33
 lat_gac_max=35
 
-xdim_gac = 2401
+xdim_gac = 3601
 ydim_gac = 2401
 gac_lon_vec = np.linspace(lon_gac_min, lon_gac_max, xdim_gac)
 gac_lat_vec = np.linspace(lat_gac_min, lat_gac_max, ydim_gac)
 
 gac_lat,gac_lon = np.meshgrid(gac_lat_vec, gac_lon_vec, sparse=False, indexing='ij')
-
-
-def inpaint_nans(im):
-    """
-     Function for filling nan values
-    """
-    ipn_kernel = np.array([[1,1,1],[1,0,1],[1,1,1]]) # kernel for inpaint_nans
-    nans = np.isnan(im)
-    while np.sum(nans)>0:
-        im[nans] = 0
-        vNeighbors = signal.convolve2d((nans==False),ipn_kernel,mode='same',boundary='symm')
-        im2 = signal.convolve2d(im,ipn_kernel,mode='same',boundary='symm')
-        im2[vNeighbors>0] = im2[vNeighbors>0]/vNeighbors[vNeighbors>0]
-        im2[vNeighbors==0] = np.nan
-        im2[(nans==False)] = im[(nans==False)]
-        im = im2
-        nans = np.isnan(im)
-    return im
+gac_lat = np.flipud(gac_lat)
 
 mergeddir=workdir + 'merged/'
 f_lat = mergeddir + 'geom_master/lat_lk.rdr'
 f_lon = mergeddir + 'geom_master/lon_lk.rdr'
 f_los = mergeddir + 'geom_master/los_lk.rdr'
 
-#CROP limits for the geom files
-ymin=146
-ymax=2780
 
 Image = isceobj.createImage()
 Image.load(f_lon + '.xml')
@@ -78,85 +61,273 @@ Image.finalizeImage()
 
 Image = isceobj.createImage()
 Image.load(f_los + '.xml')
-los_ifg = Image.memMap()[ymin:ymax,:,0]
-los_ifg = lon_ifg.copy().astype(np.float32)
-los_ifg[lon_ifg==0]=np.nan
+los_ifg = Image.memMap()[ymin:ymax,0,:]
+los_ifg = los_ifg.copy().astype(np.float32)
+los_ifg[los_ifg==0]=np.nan
 Image.finalizeImage()
+los_ifg = np.deg2rad(los_ifg) # inc angle in radians from earth looking to platform wrt vertical
+
+f = tsdir + 'gamma0_lk.int'
+intImage = isceobj.createIntImage()
+intImage.load(f + '.xml')
+gamma0_lk= intImage.memMap()[ymin:ymax,:,0]
+
+dates=list()
+flist = glob.glob(intdir + '2*_2*')
+[dates.append(f[-17:-9]) for f in flist]
+dates.append(flist[-1][-8:])
+dates.sort()
+
+if not os.path.isfile(workdir +  'GACOS/gac_stack.pkl'):
+    # Make some functions for the grid interpolation
+    def interp_weights(xy, uv,d=2):
+        tri = qhull.Delaunay(xy)
+        simplex = tri.find_simplex(uv)
+        vertices = np.take(tri.simplices, simplex, axis=0)
+        temp = np.take(tri.transform, simplex, axis=0)
+        delta = uv - temp[:, d]
+        bary = np.einsum('njk,nk->nj', temp[:, :d, :], delta)
+        return vertices, np.hstack((bary, 1 - bary.sum(axis=1, keepdims=True)))
+    
+    def interpolate(values, vtx, wts):
+        return np.einsum('nj,nj->n', np.take(values, vtx), wts)
+    
+    # Get weights for interpolation (this avoids redundant operations in loop)
+    vtx, wts = interp_weights(np.asarray((gac_lon.flatten(),gac_lat.flatten())).T, np.asarray((lon_ifg.flatten(),lat_ifg.flatten())).T)
+    
+    gac_stack = list()
+    # Loop through and grid each gacos image
+    for ii in np.arange(0,nd):
+        print('gridding gacos to ' + pairs[ii])
+        date1 = dates[ii];
+        date2 =dates[ii+1]
+        gf1 = workdir + 'GACOS/' + date1 + '.ztd'
+        gf2 = workdir + 'GACOS/' + date2 + '.ztd' 
+        gac1 = np.fromfile(gf1,dtype=np.float32)
+        gac2 = np.fromfile(gf2,dtype=np.float32)
+        gac = gac2-gac1
+        gac = np.asarray(gac, dtype=np.float32)
+    #    gac_grid =griddata((gac_lon.flatten(),gac_lat.flatten()),gac.flatten(), (lon_ifg,lat_ifg), method='linear')
+        gac_grid=interpolate(gac, vtx, wts)
+        gac_grid[gac_grid==0]=np.nan
+        gac_grid = np.reshape(gac_grid,(len(np.arange(ymin,ymax)),nxl))
+        gac_grid=np.asarray(gac_grid,dtype=np.float32)
+        gac_grid-=np.nanmean(gac_grid)
+        gac_stack.append(gac_grid)
+else:
+    print(workdir +  'GACOS/gac_stack.pkl already exists. Loading it...')
+    with open(workdir +  'GACOS/gac_stack.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
+        gac_stack = pickle.load(f) 
+with open(workdir +  'GACOS/gac_stack.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
+    pickle.dump(gac_stack, f)
+
+if do_wrapped==1:
+    # Load ifg and correct for wrapped data
+    gamma_thresh = .2
+    rx=2
+    ry=2
+    gausx = np.exp( np.divide( -np.square(np.arange(-rx,rx)), np.square(rx)));
+    gausy = np.exp( np.divide( -np.square(np.arange(-ry,ry)), np.square(ry)));
+    gaus = gausx[:, np.newaxis] * gausy[np.newaxis, :]
+    gaus = gaus-gaus.min()
+    gaus  = gaus/np.sum(gaus.flatten())
+    for ii,pair in enumerate(pairs):
+        phs_c = (np.zeros((nyl,nxl))*1j).astype(np.complex64)
+        f = intdir + pair + '/fine_lk.int'
+        Image = isceobj.createIntImage()
+        Image.load(f + '.xml')
+        phs_ifg = Image.memMap()[ymin:ymax,:,0]
+        Image.finalizeImage()    
+        gac = ((gac_stack[ii])/np.cos(los_ifg)) #meters
+        gac_complex = np.exp( ((gac *np.pi *4)/lam)*1j ) # complex number
+        phs_c[ymin:ymax,:] = phs_ifg * np.conj(gac_complex)
+        phs_c[np.isnan(phs_c)]=0
+        phs_c = np.asarray(phs_c,dtype=np.complex64)
+        
+
+        # DO ps interp________________________________________________________
+        rea_lk = np.real(phs_c)
+        ima_lk = np.imag(phs_c)
+        # Mask ones where the data is good
+        mask = np.ones(rea_lk.shape)
+        mask[np.where(gamma0_lk < gamma_thresh)]=0
+        
+        # Smooth everything into zero space
+        mask_f = cv2.filter2D(mask,-1, gaus)
+        rea_f = cv2.filter2D(rea_lk,-1, gaus)
+        ima_f = cv2.filter2D(ima_lk,-1, gaus)
+        
+        # Divide by mask. This is how we care for nan values
+        rea = rea_f/mask_f
+        ima = ima_f/mask_f
+        rea += rea_lk
+        ima += ima_lk
+        phs_lk = (rea+(1j*ima)).astype(np.complex64)
+        phs_lk[np.isnan(phs_lk)]=0
+       #_____________________________________________________________
+
+        out = Image.clone() # Copy the interferogram image from before
+        out.filename = intdir + pair + '/fine_lk_gac.int'
+        out.dump( intdir + pair + '/fine_lk_gac.int.xml') # Write out xml
+        phs_lk.tofile(out.filename) # Write file out
+        out.finalizeImage()
 
 
-# Load IFG
-pair = pairs[33]
+if do_wrapped==0:
+    # Load ifg and correct
+    for ii,pair in enumerate(pairs):
+        phs_c = np.zeros((nyl,nxl))
+        f = intdir + pair + '/fine_lk.unw'
+        Image = isceobj.createIntImage()
+        Image.load(f + '.xml')
+        phs_ifg = Image.memMap()[ymin:ymax,:,0]
+        phs_ifg = phs_ifg.copy().astype(np.float32)*lam/(4*np.pi)*100
+        phs_ifg[phs_ifg==0]=np.nan
+        Image.finalizeImage()
+        plt.imshow(phs_ifg)
+#        phs_ifg-=np.nanmedian(phs_ifg)
+        gac = ((gac_stack[ii]*100)/np.cos(los_ifg))
+#        gac-=np.nanmedian(gac)
+        phs_c[ymin:ymax,:] = phs_ifg-gac
+        phs_c-=np.nanmedian(phs_c)
+        phs_c[np.isnan(phs_c)]=0
+        phs_c = np.asarray(phs_c,dtype=np.float32)
+        out = Image.clone() # Copy the interferogram image from before
+        out.filename = intdir + pair + '/fine_lk_gac.unw'
+        out.dump( intdir + pair + '/fine_lk_gac.unw.xml') # Write out xml
+        phs_c.tofile(out.filename) # Write file out
+        out.finalizeImage()
+
+h = workdir + 'merged/geom_master/hgt_lk.rdr'
+hImg = isceobj.createImage()
+hImg.load(h + '.xml')
+hgt = hImg.memMap()[ymin:ymax,:,0].astype(np.float32)
+
+ymin2=84
+ymax2=2575
+xmin=35
+xmax=6320
+crop_mask = np.zeros(hgt.shape)
+crop_mask[ymin2:ymax2,xmin:xmax] =1
+
+# Load example
+# Load phs
+idx = 31
+pair =pairs[idx]
 f = intdir + pair + '/fine_lk.unw'
 Image = isceobj.createImage()
 Image.load(f + '.xml')
 phs_ifg = Image.memMap()[ymin:ymax,:,0]
 phs_ifg = phs_ifg.copy().astype(np.float32)*lam/(4*np.pi)*100
-phs_ifg[phs_ifg==0]=np.nan
 Image.finalizeImage()
+phs_ifg*=crop_mask
+phs_ifg[phs_ifg==0]=np.nan
+phs_ifg[np.where( (hgt<.1) ) ]=np.nan # masks the water
+phs_ifg-=np.nanmedian(phs_ifg)
 
-phs_ifg-=np.nanmean(phs_ifg)
+# Load phs corrected
+f = intdir + pair + '/fine_lk_gac.unw'
+Image = isceobj.createImage()
+Image.load(f + '.xml')
+phs_c = Image.memMap()[ymin:ymax,:,0]
+phs_c = phs_c.copy().astype(np.float32)
+phs_c*=crop_mask
+phs_c[phs_c==0]=np.nan
+phs_c[np.where( (hgt<.1) ) ]=np.nan # masks the water
 
-#idxrow,idxcol = np.where((lat_ifg>lat_gac_max) | (lat_ifg <lat_gac_min) | (lon_ifg<lon_gac_min) | (lon_ifg>lon_gac_max-.5))
-#lat_ifg[idxrow,idxcol] = np.nan
-#lon_ifg[idxrow,idxcol] = np.nan
-#lat_ifg = inpaint_nans(lat_ifg)
-#lon_ifg = inpaint_nans(lon_ifg)
-dates=list()
-flist = glob.glob(intdir + '2*_2*')
-[dates.append(f[-17:-9]) for f in flist]
-dates.append(flist[-1][-8:])
+# Load gac model
+gac_mod = (gac_stack[idx]*100)/np.cos(los_ifg)
+gac_mod*=crop_mask
+gac_mod[gac_mod==0]=np.nan
+gac_mod[np.where( (hgt<.1) ) ]=np.nan # masks the water
+gac_mod-=np.nanmedian(gac_mod)
 
-gac_stack = list()
+# Plot example gacos model and ifg 
+vmin,vmax=-5,5
+fig = plt.figure(figsize=(8,10))
+ax =  fig.add_subplot(4,1,1);plt.imshow(phs_ifg,vmin=vmin,vmax=vmax)
+ax.set_title('ifg')
+ax = fig.add_subplot(4,1,2);plt.imshow(gac_mod,vmin=vmin,vmax=vmax)
+ax.set_title('model')
+ax =  fig.add_subplot(4,1,3);plt.imshow(phs_c,vmin=vmin,vmax=vmax)
+ax.set_title('corrected ifg')
 
-for ii in np.arange(0,nd):
-    date1 = dates[ii]
-    date2 =dates[ii+1]
-    gf1 = workdir + 'GACOS/' + date1 + '.ztd'
-    gf2 = workdir + 'GACOS/' + date2 + '.ztd' 
-    gac1 = np.fromfile(gf1,dtype=np.float32)
-    gac2 = np.fromfile(gf2,dtype=np.float32)
-    gac = gac2-gac1
-    gac_stack.append(np.reshape(gac,(ydim_gac,xdim_gac)).astype(np.float32))
-    
-    
-plt.imshow(gac)
-
-gac_grid =griddata((gac_lon.flatten(),gac_lat.flatten()),gac.flatten(), (lon_ifg,lat_ifg), method='nearest')
-gac_grid = np.flipud(gac_grid)*100
-gac_grid[gac_grid==0]=np.nan
-
-gac_grid-=np.nanmean(gac_grid)
-
-phs_c = phs_ifg-gac_grid
-phs_c-=np.nanmean(phs_c)
-
-pad=1
-plt.figure()
+pad=0
+fig = plt.figure(figsize=(16,5))
+ax = fig.add_subplot(1,3,1)
+ax.set_title('Original IFG')
 m = Basemap(epsg=3395, llcrnrlat=(lat_ifg.min()-pad), urcrnrlat=(lat_ifg.max()+pad),\
             llcrnrlon=(lon_ifg.min()-pad), urcrnrlon=(lon_ifg.max()+pad), resolution='i')
-m.drawstates(linewidth=0.5,zorder=6,color='white')
-m.arcgisimage(service='World_Shaded_Relief',xpixels=2000)
-cf = m.pcolormesh(lon_ifg,lat_ifg,gac_grid,shading='flat',cmap=plt.cm.Spectral.reversed(),latlon=True, zorder=8)
+#m.drawstates(linewidth=0.5,zorder=6,color='white')
+m.arcgisimage(service='World_Shaded_Relief',xpixels=800)
+cf = m.pcolormesh(lon_ifg,lat_ifg,phs_ifg,shading='flat',latlon=True, zorder=8,vmin=vmin,vmax=vmax)
 #cbar = m.colorbar(cf,location='bottom',pad="10%")
 #cbar.set_label('cm')
 plt.show()
 
-plt.figure()
+ax = fig.add_subplot(1,3,2)
+ax.set_title('Modeled Tropospheric delay')
 m = Basemap(epsg=3395, llcrnrlat=(lat_ifg.min()-pad), urcrnrlat=(lat_ifg.max()+pad),\
             llcrnrlon=(lon_ifg.min()-pad), urcrnrlon=(lon_ifg.max()+pad), resolution='i')
-m.drawstates(linewidth=0.5,zorder=6,color='white')
-m.arcgisimage(service='World_Shaded_Relief',xpixels=2000)
-cf = m.pcolormesh(lon_ifg,lat_ifg,phs_ifg,shading='flat',cmap=plt.cm.Spectral.reversed(),latlon=True, zorder=8)
-#cbar = m.colorbar(cf,location='bottom',pad="10%")
-#cbar.set_label('cm')
+m.arcgisimage(service='World_Shaded_Relief',xpixels=800)
+cf = m.pcolormesh(lon_ifg,lat_ifg,gac_mod,shading='flat',latlon=True, zorder=8,vmin=vmin,vmax=vmax)
+cbar = m.colorbar(cf,location='bottom',pad="10%")
+cbar.set_label('Phase delay (cm)')
 plt.show()
 
-plt.figure()
+ax = fig.add_subplot(1,3,3)
+ax.set_title('Corrected IFG')
 m = Basemap(epsg=3395, llcrnrlat=(lat_ifg.min()-pad), urcrnrlat=(lat_ifg.max()+pad),\
             llcrnrlon=(lon_ifg.min()-pad), urcrnrlon=(lon_ifg.max()+pad), resolution='i')
 m.drawstates(linewidth=0.5,zorder=6,color='white')
-m.arcgisimage(service='World_Shaded_Relief',xpixels=2000)
-cf = m.pcolormesh(lon_ifg,lat_ifg,phs_c,shading='flat',cmap=plt.cm.Spectral.reversed(),latlon=True, zorder=8)
-#cbar = m.colorbar(cf,location='bottom',pad="10%")
-#cbar.set_label('cm')
+m.arcgisimage(service='World_Shaded_Relief',xpixels=800)
+cf = m.pcolormesh(lon_ifg,lat_ifg,phs_c,shading='flat',latlon=True, zorder=8,vmin=vmin,vmax=vmax)
 plt.show()
+plt.savefig(workdir + 'Figs/GACOS_correction.png',transparent=True,dpi=300 )
+
+## Load example
+## Load phs
+#idx = 31
+#pair =pairs[idx]
+#f = intdir + pair + '/fine_lk.unw'
+#Image = isceobj.createImage()
+#Image.load(f + '.xml')
+#phs_ifg = Image.memMap()[:,:,0]
+#phs_ifg = phs_ifg.copy().astype(np.float32)*lam/(4*np.pi)*100
+#Image.finalizeImage()
+#phs_ifg*=crop_mask
+#phs_ifg[phs_ifg==0]=np.nan
+#phs_ifg[np.where( (hgt<.1) ) ]=np.nan # masks the water
+#phs_ifg-=np.nanmean(phs_ifg)
+#
+## Load phs corrected
+#f = intdir + pair + '/fine_lk_gac.int'
+#Image = isceobj.createImage()
+#Image.load(f + '.xml')
+#phs_c = Image.memMap()[:,:,0]
+#phs_c = phs_c.copy().astype(np.float32)
+#phs_c*=crop_mask
+#phs_c[phs_c==0]=np.nan
+#phs_c[np.where( (hgt<.1) ) ]=np.nan # masks the water
+
+_,_,_,_,phs_ifg_S_bins, phs_ifg_S_bins_std, phs_ifg_dist_bins,_ = structure_function.struct_fun(phs_ifg,250,400,0)
+phs_ci = 1.96*(np.divide(phs_ifg_S_bins_std,np.sqrt( 250)))
+
+_,_,_,_,gac_ifg_S_bins, gac_ifg_S_bins_std, gac_ifg_dist_bins,_ = structure_function.struct_fun(phs_c,250,400,0)
+gac_ci = 1.96*(np.divide(gac_ifg_S_bins_std,np.sqrt( 250)))
+
+plt.figure()
+plt.plot(phs_ifg_dist_bins[:26],phs_ifg_S_bins[:26])
+plt.fill_between(phs_ifg_dist_bins[:26],phs_ifg_S_bins[:26]-phs_ci[:26], phs_ifg_S_bins[:26]+phs_ci[:26],
+                     alpha=0.3, linewidth=1, linestyle='dashed', antialiased=True)
+plt.plot(gac_ifg_dist_bins[:26],gac_ifg_S_bins[:26])
+plt.fill_between(gac_ifg_dist_bins[:26],gac_ifg_S_bins[:26]-gac_ci[:26], gac_ifg_S_bins[:26]+gac_ci[:26],
+                     alpha=0.3, linewidth=1, linestyle='dashed', antialiased=True)
+plt.title('Structure Function ' + pair)
+plt.ylabel('RMS of phase difference between pixels (cm)')
+plt.xlabel('Distance between pixels(km)')
+plt.legend(['Original IFG','Corrected IFG'],loc='upper left')
+plt.savefig(workdir + 'Figs/GACOS_structfun.svg',transparent=True,dpi=100 )
+
+
+
