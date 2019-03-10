@@ -8,120 +8,111 @@ Created on Fri Aug  3 16:45:20 2018
 
 import numpy as np
 import isceobj
-import pickle
-import os
-from datetime import date
+#import os
+#from datetime import date
 from mpl_toolkits.basemap import Basemap
 from matplotlib import pyplot as plt
+from skimage.measure import profile_line as pl
+import fitSine
 
-with open(tsdir + '/params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
-    pairs,nd,lam,workdir,intdir,tsdir,ny,nx,nxl,nyl,alks,rlks = pickle.load(f)
+params = np.load('params.npy').item()
+locals().update(params)
+geom = np.load('geom.npy').item()
 
-# Run refDef.py before this to make the alld_flat.pkl file
-#with open(tsdir + 'alld_flat.pkl','rb')as f:
-#    alld_flat = pickle.load(f)
-    
-#pairs=pairs[:-45]    
-# Convert pairs to dates
-dn = list()
-dn.append( date.toordinal(date(int(pairs[0][9:13]), int(pairs[0][13:15]), int(pairs[0][15:]))) )
-dec_year = list()
-# Do the first date in the decimal year array
-pair = pairs[0]
-yr = pair[9:13]
-mo = pair[13:15]
-day = pair[15:]
-dt = date.toordinal(date(int(yr), int(mo), int(day)))
-d0 = date.toordinal(date(int(yr), 1, 1))
-doy = np.asarray(dt)-d0+1
-dec_year.append(float(yr) + (doy/365.25))
+skip=3
+# Run refDef.py before this to make the alld_flat_topo.npy file
+alld_flat_topo=np.load('alld_flat_topo.npy')
+pairs = np.load('pairs_cut.npy')
+#crop_mask = np.load('crop_mask.npy')
+ymin=406
+ymax=3415
+xmin=2
+xmax=3966
+#ymin=85
+#ymax=3555
+#xmin=45
+#xmax=1720
+nxl = xmax-xmin
+nyl = ymax-ymin
 
-for pair in pairs:
-    yr = pair[9:13]
-    mo = pair[13:15]
-    day = pair[15:]
-    dt = date.toordinal(date(int(yr), int(mo), int(day)))
-    dn.append(dt)
-    d0 = date.toordinal(date(int(yr), 1, 1))
-    doy = np.asarray(dt)-d0+1
-    dec_year.append(float(yr) + (doy/365.25))
-dn = np.asarray(dn)
-dn0 = dn-dn[0] # make relative to first date
+# Get the geom files
+hgt = geom['hgt_ifg'][ymin:ymax,xmin:xmax]
+la = geom['lat_ifg'][ymin:ymax,xmin:xmax]
+lo = geom['lon_ifg'][ymin:ymax,xmin:xmax]
+gam = np.load('gam.npy')[ymin:ymax,xmin:xmax]
 
-# Example pixel for check
-# LOST HILLS OIL
-r=2389
-c=1595
-# MAIN SUBSIDENCE PEAK
-r=2199
-c=1227
-# UPLIFT AREA NEAR LOST HILLS
-r=2647
-c=1359
-idx = ((r-1)*nxl)+c #finds the index of flattened array based on row col in image
-# Example pixel for check
-y=alld_flat_topo[:,idx]
-G = np.vstack([dn0, np.ones((len(dn0),1)).flatten()]).T
-Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
-mod    = np.dot(Gg, y)
-y2 = mod[0]*dn0 + mod[1]
+## Example pixel for check
+example_ts = list([[113,279],[111,208]])
+#example_ts = list([[3707,808],[772,2099]])
+#example_ts = list([[3560,1512],[2808,1064],[1192,1504],[1008,448]])
+dn0 = dn - dn[0]
+d1=0
+period = 365.25
+#c,r = 3707,808
+for ii,point in enumerate(example_ts):
+    c=point[0];r=point[1]
+    idx = ((r)*nxl)+c #finds the index of flattened array based on row col in image
+    y=-alld_flat_topo[:,idx]*lam/(4*np.pi)*100
+    phase,amplitude,bias,slope = fitSine.fitSine1d(dn0,y,period)
+    yEst = amplitude*np.sin(dn0*(1/period)*2*np.pi + phase * (np.pi/180.0)) + slope*dn0 + bias
+    plt.figure()
+    plt.plot(dec_year,y[d1:],'.')
+    plt.plot(dec_year[d1:],yEst[d1:])
+    plt.xlabel('Year'); plt.ylabel('Displacement (cm)')
+    plt.title(str(np.round((slope*365), decimals=2)) + ' cm/yr in LOS')
+    plt.show()
+#    plt.savefig(workdir + 'Figs/timeseries' + str(ii) + '.svg',transparent=True,dpi=200)
 
+# Invert for seasonal plus long term rates
+phases,amplitudes,biases,slopes = fitSine.fitSine(dn0,alld_flat_topo,period)
+
+c,r = 100,100
+idx = ((r)*nxl)+c #finds the index of flattened array based on row col in image
+y=-alld_flat_topo[:,idx]#*lam/(4*np.pi)*100
+yEst = amplitudes[idx]*np.sin(dn0*(1/period)*2*np.pi + phases[idx] * (np.pi/180.0)) + slopes[idx]*dn0 + biases[idx]
 plt.figure()
-plt.plot(dec_year,y,'.')
-plt.plot(dec_year,y2)
-plt.xlabel('Year')
-plt.ylabel('Displacement (cm)')
-##
+plt.plot(dec_year,y[d1:],'.')
+plt.plot(dec_year[d1:],yEst[d1:])
+plt.xlabel('Year'); plt.ylabel('Displacement (cm)')
+plt.title(str(np.round((slopes[idx]*365), decimals=2)) + ' cm/yr in LOS')
+plt.show()
+
+#G = np.vstack([dn0, np.ones((len(dn0),1)).flatten()]).T
+#Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
+#mod   = np.dot(Gg, alld_flat_topo)
+#rates = np.reshape(mod[0,:],(nyl,nxl))*lam/(4*np.pi)*100*365 # cm/yr
+
+rates = np.reshape(slopes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100*365
+r_nomsk = rates
+amps = np.reshape(amplitudes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100
+a_nomsk = amps
+plt.figure();plt.imshow(np.flipud(r_nomsk),vmin=-2,vmax=2)
+plt.figure();plt.imshow(np.flipud(a_nomsk),vmin=0,vmax=2)
 
 
-G = np.vstack([dn0, np.ones((len(dn0),1)).flatten()]).T
-Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
-mod    = np.dot(Gg, alld_flat_topo[:,:])
-rates   = np.reshape(mod[0,:],(nyl, nxl))*lam/(4*np.pi)*100*365 # cm/yr
-rates = rates.astype(np.float32)
-#ra = np.zeros((rates.shape))
-#ra[364:3060,1:2437]=rates[364:3060,1:2437]
 #offs  = np.reshape(mod[1,:],(nyl, nxl))
-#synth  = np.dot(G,mod);
-#res    = (alld_flat_topo-synth)*lam/(4*np.pi)*100 # cm
-#resstd = np.std(res,axis=0)
-#resstd = np.reshape(resstd,(nyl, nxl))
+synth  = np.dot(G,mod);
+res    = (alld_flat_topo-synth)*lam/(4*np.pi)*100 # cm
+resstd = np.std(res,axis=0)
+resstd = np.reshape(resstd,(nyl, nxl))
 
-
-# MASKING______________________________
-# Load gamma0_lk
-f = tsdir + 'gamma0_lk.int'
-intImage = isceobj.createIntImage()
-intImage.load(f + '.xml')
-gamma0_lk= intImage.memMap()[:,:,0] 
-gamma0_lk=gamma0_lk.copy()
-# Load height file
-h = workdir + 'merged/geom_master/hgt_lk.rdr'
-hImg = isceobj.createImage()
-hImg.load(h + '.xml')
-hgt = hImg.memMap()[:,:,0].astype(np.float32)
-# elevations at 4 of the main lakes that we'll mask out
 
 # Mask the rates matrix
-gamma0_lk*=crop_mask
-gamma0_lk[np.isnan(gamma0_lk)]=0
-rates[np.where(gamma0_lk<.3)]=np.nan #masks the low coherence areas
-rates[np.where( (hgt<.1) ) ]=np.nan # masks the lakes
-#rates=np.fliplr(rates)
+gam[np.isnan(gam)]=0
+rates[np.where(gam<.2)]=np.nan #masks the low coherence areas
+rates[np.where( (hgt<-103) ) ]=np.nan # masks the water
 
+#rates=np.fliplr(rates)
 #rates[np.isnan(rates)]=0
-#rates=np.flipud(rates)
-#plt.imshow(rates)
-#plt.imshow(offs)
+
 
 # Save rates
-fname = tsdir + 'rates_flat.unw'
+fname = tsdir + '/rates_flat.unw'
 out = isceobj.createIntImage() # Copy the interferogram image from before
 out.dataType = 'FLOAT'
 out.filename = fname
 out.width = nxl
 out.length = nyl
-#out.bands=1
 out.dump(fname + '.xml') # Write out xml
 rates.tofile(out.filename) # Write file out
 out.renderHdr()
@@ -130,19 +121,6 @@ out.renderVRT()
 # GEOCODE
 #cmd = 'geocodeIsce.py -f ' + tsdir + 'rates_flat.unw -d ' + workdir + 'DEM/demLat_N33_N35_Lon_W119_W116.dem -m ' + workdir + 'master/ -s ' + workdir + 'pawns/20150514 -r ' + str(rlks) + ' -a ' + str(alks) + ' -b "'" 33 35 -118 -116"'" '
 #os.system(cmd)
-
-r=-rates
-#r[r<5]=np.nan
-
-h = workdir + 'merged/geom_master/lon_lk.rdr'
-hImg = isceobj.createImage()
-hImg.load(h + '.xml')
-lo = hImg.memMap()[:,:,0].astype(np.float32)
-
-h = workdir + 'merged/geom_master/lat_lk.rdr'
-hImg = isceobj.createImage()
-hImg.load(h + '.xml')
-la = hImg.memMap()[:,:,0].astype(np.float32)
 
 for l in np.arange(0,nyl):
     ll = lo[l,:]
@@ -161,28 +139,87 @@ lr = (lo[p-1,-1],la[p-1,-1])
 
 lons = np.array([ul[0],ur[0],ur[0],lr[0],lr[0],ll[0],ll[0],ul[0]])
 lats = np.array([ul[1],ur[1],ur[1],lr[1],lr[1],ll[1],ll[1],ul[1]])
-pad=.5
+pad=0
 minlat=lats.min()
 maxlat=lats.max()
 minlon=lons.min()
 maxlon=lons.max()
 
-# Plot IFG
+
+# Plot rate map
 plt.rc('font',size=12)
-plt.figure(figsize=(5,6))
+plt.figure(figsize=(12,12))
 m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i')
-m.drawstates(linewidth=0.5,zorder=6,color='white')
-#m.drawcoastlines(linewidth=0.8,zorder=6,color='white')
-m.drawcountries(linewidth=0.8,zorder=6,color='white')
-#m.fillcontinents(color='white', lake_color='lightblue', zorder=1)  # set zorder=0 so it plots on the bottom
-#m.drawmapboundary(fill_color='lightblue',zorder=0)  # this will be the background color (oceans)
+        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
 m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
 m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-#m.arcgisimage(service='ESRI_Imagery_World_2D',xpixels=2000)
-m.arcgisimage(service='World_Shaded_Relief',xpixels=2000)
-cf = m.pcolormesh(lo,la,r,shading='flat',latlon=True, zorder=8,vmin=0,vmax=25)
+m.arcgisimage(service='World_Shaded_Relief',xpixels=1500)
+cf = m.pcolormesh(lo,la,rates,shading='flat',latlon=True, cmap=plt.cm.Spectral_r,zorder=8,vmin=-10,vmax=10)
+m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
+#m.plot(lo_p1,la_p1,color='red',zorder=40,latlon=True)
 cbar = m.colorbar(cf,location='bottom',pad="10%")
 cbar.set_label('cm')
 plt.show()
-#plt.savefig('sub.png', transparent=True, dpi=500)
+#plt.savefig('Figs/rate_map.png', transparent=True, dpi=500)
+#
+# Plot rate std
+plt.rc('font',size=12)
+plt.figure(figsize=(12,12))
+m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
+        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
+m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
+m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
+m.arcgisimage(service='World_Shaded_Relief',xpixels=1500)
+cf = m.pcolormesh(lo,la,resstd,shading='flat',latlon=True, cmap=plt.cm.Spectral_r,zorder=8,vmin=0,vmax=8)
+m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
+#m.plot(lo_p1,la_p1,color='red',zorder=40,latlon=True)
+cbar = m.colorbar(cf,location='bottom',pad="10%")
+cbar.set_label('cm')
+plt.show()
+
+#lonpt, latpt = m(16558,67529,inverse=True)
+#
+#fault_listx = list([161895,129528,122949,115581,113213,51636,40058])
+#fault_listy = list([135211,120474,117580,115475,113633,86528,81528])
+#dst=list()
+#lonpt, latpt = m(fault_listx[0],fault_listy[0],inverse=True)
+#
+#for ii in np.arange(1,len(fault_listx)):
+#    lonpt2, latpt2 = m(fault_listx[ii],fault_listy[ii],inverse=True)
+#    dst.append(np.sqrt(np.square(lonpt-lonpt2)+np.square(latpt-latpt2)))
+
+
+
+
+# Profiles
+# Example profile: pl(image, src, dst, linewidth=1, order=1, mode='constant', cval=0.0)
+
+# PROFILE 1 
+x0,y0 = 164,2412
+x1,y1 = 364,2604
+# Convert to lat lon
+lo_p4=(lo[y0,x0],lo[y1,x1])
+la_p4=(la[y0,x0],la[y1,x1])
+#find total distance
+prof_dist = np.sqrt(np.square(lo_p4[0]-lo_p4[1]) + np.square(la_p4[0]-la_p4[1])) *111
+fig, ax1 = plt.subplots(figsize=(6,4))
+zii = pl(rates,(y0,x0),(y1,x1),linewidth=2)
+prof_vec = np.linspace(0,prof_dist,len(zii))
+ax1.plot(prof_vec,zii*10,'k.')
+#ax1.vlines(8.4,ymin=10*zii.min(),ymax=10*zii.max(),color='red')
+#plt.ylim([-1,.5])
+ax1.set_xlabel('Profile Distance (km)')
+ax1.tick_params(axis='y')
+ax1.set_ylabel('LOS Rate (mm/yr)')
+# topo profile
+ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+zii_topo = pl(hgt,(y0,x0),(y1,x1),linewidth=2)
+ax2.plot(prof_vec,zii_topo)
+#ax2.vlines(8.4,ymin=zii_topo.min(),ymax=zii_topo.max(),color='red')
+#plt.ylim([-1,.5])
+ax2.set_xlabel('Profile Distance (km)')
+ax2.set_ylabel('Elevation (m)',color='tab:blue')
+ax2.tick_params(axis='y', labelcolor='tab:blue')
+fig.tight_layout()  # otherwise the right y-label is slightly clipped
+plt.show()
+#plt.savefig(workdir + 'Figs/prof4_topo.svg',transparent=True,dpi=100)
