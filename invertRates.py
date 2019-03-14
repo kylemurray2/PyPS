@@ -15,6 +15,14 @@ from matplotlib import pyplot as plt
 from skimage.measure import profile_line as pl
 import fitSine
 
+#********************************
+# Set these paramaters
+#********************************
+seasonal = False
+mcov_flag = True
+water_elevation = -103
+#********************************
+
 params = np.load('params.npy').item()
 locals().update(params)
 geom = np.load('geom.npy').item()
@@ -23,15 +31,13 @@ skip=3
 # Run refDef.py before this to make the alld_flat_topo.npy file
 alld_flat_topo=np.load('alld_flat_topo.npy')
 pairs = np.load('pairs_cut.npy')
-#crop_mask = np.load('crop_mask.npy')
+
+# Need to make the crop bounds stored in params.npy or geom.npy**************
 ymin=406
 ymax=3415
 xmin=2
 xmax=3966
-#ymin=85
-#ymax=3555
-#xmin=45
-#xmax=1720
+
 nxl = xmax-xmin
 nyl = ymax-ymin
 
@@ -41,70 +47,51 @@ la = geom['lat_ifg'][ymin:ymax,xmin:xmax]
 lo = geom['lon_ifg'][ymin:ymax,xmin:xmax]
 gam = np.load('gam.npy')[ymin:ymax,xmin:xmax]
 
-## Example pixel for check
-example_ts = list([[113,279],[111,208]])
-#example_ts = list([[3707,808],[772,2099]])
-#example_ts = list([[3560,1512],[2808,1064],[1192,1504],[1008,448]])
 dn0 = dn - dn[0]
 d1=0
 period = 365.25
-#c,r = 3707,808
-for ii,point in enumerate(example_ts):
-    c=point[0];r=point[1]
-    idx = ((r)*nxl)+c #finds the index of flattened array based on row col in image
-    y=-alld_flat_topo[:,idx]*lam/(4*np.pi)*100
-    phase,amplitude,bias,slope = fitSine.fitSine1d(dn0,y,period)
-    yEst = amplitude*np.sin(dn0*(1/period)*2*np.pi + phase * (np.pi/180.0)) + slope*dn0 + bias
-    plt.figure()
-    plt.plot(dec_year,y[d1:],'.')
-    plt.plot(dec_year[d1:],yEst[d1:])
-    plt.xlabel('Year'); plt.ylabel('Displacement (cm)')
-    plt.title(str(np.round((slope*365), decimals=2)) + ' cm/yr in LOS')
-    plt.show()
-#    plt.savefig(workdir + 'Figs/timeseries' + str(ii) + '.svg',transparent=True,dpi=200)
 
-# Invert for seasonal plus long term rates
-phases,amplitudes,biases,slopes = fitSine.fitSine(dn0,alld_flat_topo,period)
-
-c,r = 100,100
-idx = ((r)*nxl)+c #finds the index of flattened array based on row col in image
-y=-alld_flat_topo[:,idx]#*lam/(4*np.pi)*100
-yEst = amplitudes[idx]*np.sin(dn0*(1/period)*2*np.pi + phases[idx] * (np.pi/180.0)) + slopes[idx]*dn0 + biases[idx]
-plt.figure()
-plt.plot(dec_year,y[d1:],'.')
-plt.plot(dec_year[d1:],yEst[d1:])
-plt.xlabel('Year'); plt.ylabel('Displacement (cm)')
-plt.title(str(np.round((slopes[idx]*365), decimals=2)) + ' cm/yr in LOS')
-plt.show()
-
-#G = np.vstack([dn0, np.ones((len(dn0),1)).flatten()]).T
-#Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
-#mod   = np.dot(Gg, alld_flat_topo)
-#rates = np.reshape(mod[0,:],(nyl,nxl))*lam/(4*np.pi)*100*365 # cm/yr
-
-rates = np.reshape(slopes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100*365
-r_nomsk = rates
-amps = np.reshape(amplitudes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100
-a_nomsk = amps
-plt.figure();plt.imshow(np.flipud(r_nomsk),vmin=-2,vmax=2)
-plt.figure();plt.imshow(np.flipud(a_nomsk),vmin=0,vmax=2)
+if seasonals:
+    # Invert for seasonal plus long term rates
+    phases,amplitudes,biases,slopes = fitSine.fitSine(dn0,alld_flat_topo,period)
+    rates = np.reshape(slopes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100*365
+    r_nomsk = rates
+    amps = np.reshape(amplitudes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100
+    a_nomsk = amps
+    plt.figure();plt.imshow(np.flipud(r_nomsk),vmin=-2,vmax=2)
+    plt.figure();plt.imshow(np.flipud(a_nomsk),vmin=0,vmax=2)
+else:
+    G = np.vstack([dn0, np.ones((len(dn0),1)).flatten()]).T
+    Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
+    mod   = np.dot(Gg, alld_flat_topo)
+    rates = np.reshape(mod[0,:],(nyl,nxl))*lam/(4*np.pi)*100*365 # cm/yr
+    #offs  = np.reshape(mod[1,:],(nyl, nxl))
+    synth  = np.dot(G,mod);
+    res    = (alld_flat_topo-synth)*lam/(4*np.pi)*100 # cm
+    resstd = np.std(res,axis=0)
+    resstd = np.reshape(resstd,(nyl, nxl))
+    
+    if mcov_flag:
+        rate_uncertainty = []
+        for d in alld:
+            co=cov(d);
+            mcov=np.diag(np.dot(Gg,np.dot(co,Gg.T)));
+            rate_uncertainty.append(1.96*mcov[1]**.5)
+        rate_uncertainty=np.reshape(rate_uncertainty,(nyl,nxl)) *lam/(4*pi)*100*365 #cm/yr
+        plt.figure()
+        ax,fig = plt.subplots(1,2,figsize=(4,5))
+        ax[0].imshow(rates)
+        ax[1].imshow(rate_uncertainty)
 
 
-#offs  = np.reshape(mod[1,:],(nyl, nxl))
-synth  = np.dot(G,mod);
-res    = (alld_flat_topo-synth)*lam/(4*np.pi)*100 # cm
-resstd = np.std(res,axis=0)
-resstd = np.reshape(resstd,(nyl, nxl))
 
 
 # Mask the rates matrix
 gam[np.isnan(gam)]=0
 rates[np.where(gam<.2)]=np.nan #masks the low coherence areas
-rates[np.where( (hgt<-103) ) ]=np.nan # masks the water
-
+rates[np.where( (hgt<water_elevation) ) ]=np.nan # masks the water
 #rates=np.fliplr(rates)
 #rates[np.isnan(rates)]=0
-
 
 # Save rates
 fname = tsdir + '/rates_flat.unw'
@@ -176,50 +163,3 @@ m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
 cbar = m.colorbar(cf,location='bottom',pad="10%")
 cbar.set_label('cm')
 plt.show()
-
-#lonpt, latpt = m(16558,67529,inverse=True)
-#
-#fault_listx = list([161895,129528,122949,115581,113213,51636,40058])
-#fault_listy = list([135211,120474,117580,115475,113633,86528,81528])
-#dst=list()
-#lonpt, latpt = m(fault_listx[0],fault_listy[0],inverse=True)
-#
-#for ii in np.arange(1,len(fault_listx)):
-#    lonpt2, latpt2 = m(fault_listx[ii],fault_listy[ii],inverse=True)
-#    dst.append(np.sqrt(np.square(lonpt-lonpt2)+np.square(latpt-latpt2)))
-
-
-
-
-# Profiles
-# Example profile: pl(image, src, dst, linewidth=1, order=1, mode='constant', cval=0.0)
-
-# PROFILE 1 
-x0,y0 = 164,2412
-x1,y1 = 364,2604
-# Convert to lat lon
-lo_p4=(lo[y0,x0],lo[y1,x1])
-la_p4=(la[y0,x0],la[y1,x1])
-#find total distance
-prof_dist = np.sqrt(np.square(lo_p4[0]-lo_p4[1]) + np.square(la_p4[0]-la_p4[1])) *111
-fig, ax1 = plt.subplots(figsize=(6,4))
-zii = pl(rates,(y0,x0),(y1,x1),linewidth=2)
-prof_vec = np.linspace(0,prof_dist,len(zii))
-ax1.plot(prof_vec,zii*10,'k.')
-#ax1.vlines(8.4,ymin=10*zii.min(),ymax=10*zii.max(),color='red')
-#plt.ylim([-1,.5])
-ax1.set_xlabel('Profile Distance (km)')
-ax1.tick_params(axis='y')
-ax1.set_ylabel('LOS Rate (mm/yr)')
-# topo profile
-ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-zii_topo = pl(hgt,(y0,x0),(y1,x1),linewidth=2)
-ax2.plot(prof_vec,zii_topo)
-#ax2.vlines(8.4,ymin=zii_topo.min(),ymax=zii_topo.max(),color='red')
-#plt.ylim([-1,.5])
-ax2.set_xlabel('Profile Distance (km)')
-ax2.set_ylabel('Elevation (m)',color='tab:blue')
-ax2.tick_params(axis='y', labelcolor='tab:blue')
-fig.tight_layout()  # otherwise the right y-label is slightly clipped
-plt.show()
-#plt.savefig(workdir + 'Figs/prof4_topo.svg',transparent=True,dpi=100)
