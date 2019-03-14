@@ -20,14 +20,15 @@ import cv2
 import os
 #from mroipac.filter.Filter import Filter
 
+overwrite = True
+
 params = np.load('params.npy').item()
 locals().update(params)
-
+dates = params['dates']
 
 # Make the gaussian filter we'll convolve with ifg
-skip = 3 # how many redundant pairs did you make?
-rx = 5
-ry = 5
+rx = 10
+ry = 10
 rx2 = np.floor(rx*3)
 ry2 = np.floor(ry*3)
 gausx = np.exp( np.divide( -np.square(np.arange(-rx2,rx2)), np.square(rx)));
@@ -36,9 +37,15 @@ gaus = gausx[:, np.newaxis] * gausy[np.newaxis, :]
 gaus -= gaus.min()
 gaus  /= np.sum(gaus.flatten())
 
-dates = params['dates']
+# get slc example image (extract from an xml file)
+f = params['slcdir'] +'/'+ dates[0] + '/' + dates[0] + '.slc.full'
+slcImage = isceobj.createSlcImage()
+slcImage.load(f + '.xml')
+intimg = isceobj.createIntImage()
+intimg.width = slcImage.width
+intimg.length = slcImage.length
 for ii,d in enumerate(dates[:-1]): 
-    if not os.path.isfile(params['slcdir'] + '/' + d + '/fine_diff.int'):
+    if not os.path.isfile(params['slcdir'] + '/' + d + '/fine_diff.int') or overwrite:
         print('working on ' + d)
         d2 = dates[ii+1]
         #load ifg real and imaginary parts
@@ -53,63 +60,72 @@ for ii,d in enumerate(dates[:-1]):
         ifg = np.multiply(slc1,np.conj(slc2))
         ifg_real = np.real(ifg)
         ifg_imag = np.imag(ifg)
-        
+#        ifg_real[np.where(ifg_real==0)] = np.nan
+#        ifg_imag[np.where(ifg_real==0)] = np.nan
         #filter real and imaginary parts    
         ifg_real_filt = cv2.filter2D(ifg_real,-1, gaus)
         ifg_imag_filt = cv2.filter2D(ifg_imag,-1, gaus)  
         phs_filt = np.arctan2(ifg_imag_filt, ifg_real_filt).astype(np.float32)
 
         # Difference them 
-        cpx0    = ifg_real + 1j*ifg_imag
+        cpx0    = ifg_real      + 1j * ifg_imag
         cpxf    = ifg_real_filt + 1j * ifg_imag_filt
         cpx0   /= abs(cpx0)
         cpxf   /= abs(cpxf)
         phsdiff = np.multiply(cpx0, np.conj(cpxf))
         
         #save diff ifg
-        intImage = slcImage.clone() # Copy the interferogram image from before
-        intImage.scheme =  'BIP' #'BIP'/ 'BIL' / 'BSQ' 
-        intImage.imageType = 'int'
+        intImage = intimg.clone() # Copy the interferogram image from before
         intImage.filename = params['slcdir'] + '/' + d + '/fine_diff.int'
         intImage.dump(params['slcdir']  + '/' + d + '/fine_diff.int.xml') # Write out xml
         phsdiff.tofile(params['slcdir'] + '/' + d + '/fine_diff.int') # Write file out
 
+    else:
+        print(d + ' already exists.')
+
 del(ifg_imag,ifg_imag_filt,ifg_real,ifg_real_filt,cpx0,cpxf,phsdiff)
+
+#mad = lambda x: np.sqrt(np.nanmedian(abs(x - np.nanmedian(x,axis=0))**2),axis=0d)
+
 
 gamma0 =list()
 # Make a stack of the diff images (memory mapped )
 # We have to do this in 20 subsections to save on memory
-chunks = np.linspace(0,params['ny'],20,dtype=int)
+chunks = np.linspace(0,params['ny'],17,dtype=int)
 for ii in np.arange(0,len(chunks)-1):
     diff_stack = list()
-    for ii,d in enumerate(dates[:-1]): 
+    for jj,d in enumerate(dates[:-1]): 
         diff_file = params['slcdir'] + '/' + d + '/fine_diff.int'
-        diffImage = isceobj.createIntImage()
+        diffImage = intimg.clone() 
         diffImage.load(diff_file + '.xml')
-        diff_stack.append(diffImage.memMap()[chunks[ii]:chunks[ii+1],:,0])
+        img = diffImage.memMap()[chunks[ii]:chunks[ii+1],:,0]
+        ph = abs(np.arctan2(np.imag(img), np.real(img)).astype(np.float32))
+        ph[ph==0]=np.nan
+        diff_stack.append(ph)
     # Find phase variance 
-    gamma0.append(np.abs( np.nansum( np.asarray(diff_stack), axis=0)/params['nd'] )) 
-
-a=np.empty((params['ny'],params['nx']))
+#    gamma0.append(np.abs( np.nansum( np.asarray(diff_stack), axis=0)/len(dates))) 
+        gamma0.append(np.nanvar(np.asarray(diff_stack), axis=0))
+b=np.empty((params['ny'],params['nx']))
 for ii in np.arange(0,len(chunks)-1):
-    a[chunks[ii]:chunks[ii+1]]=gamma0[ii]
-gamma0 = a
-gamma0 = np.asarray(gamma0)
-gamma0=np.reshape(np.asarray(gamma0),(params['ny'],params['nx']))
-gamma0[np.where(gamma0==0)]=np.nan
-gamma0 /= gamma0.max()
-gamma0=gamma0.astype(np.float32)
+    b[chunks[ii]:chunks[ii+1]]=gamma0[ii]
+gamma02 = a
+gamma02 = np.asarray(gamma02)
+gamma02=np.reshape(np.asarray(gamma02),(params['ny'],params['nx']))
+gamma02 /= gamma02.max()
+gamma02[np.where(gamma02==0)]=np.nan
+gamma02=np.asarray(gamma02, dtype=np.float32)
 
 
 # Save gamma0 file
-out = intImage.clone() # Copy the interferogram image from before
-out.dataType = 'FLOAT'
+
+out = intimg.clone() # Copy the interferogram image from before
 out.filename = params['tsdir'] + '/gamma0.int'
 out.dump(params['tsdir'] + '/gamma0.int.xml') # Write out xml
-gamma0.tofile(out.filename) # Write file out
+gamma02.tofile(out.filename) # Write file out
 
-plt.imshow(gamma0,vmin=0.1,vmax=.8)
+plt.imshow(gamma02,vmin=0.1,vmax=.4)
 plt.figure()
-plt.hist( gamma0.flatten()[~np.isnan(gamma0.flatten())], 40, edgecolor='black', linewidth=.2)
+plt.hist( gamma02.flatten()[~np.isnan(gamma02.flatten())], 40, edgecolor='black', linewidth=.2)
 plt.title('Phase stability histogram')
 plt.xlabel('Phase stability (1 is good, 0 is bad)')
+plt.show()
