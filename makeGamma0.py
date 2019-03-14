@@ -88,7 +88,7 @@ for ii in np.arange(0,len(chunks)-1):
         diffImage.load(diff_file + '.xml')
         diff_stack.append(diffImage.memMap()[chunks[ii]:chunks[ii+1],:,0])
     # Find phase variance 
-    gamma0.append(np.abs( np.nansum( np.asarray(diff_stack), axis=0)/params['nd'] )) 
+    gamma0.append(np.abs( np.nansum( np.asarray(diff_stack), axis=0)/len(dates))) 
 
 a=np.empty((params['ny'],params['nx']))
 for ii in np.arange(0,len(chunks)-1):
