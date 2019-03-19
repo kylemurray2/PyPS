@@ -22,7 +22,7 @@ locals().update(geom)
 atm_flag = 0 # set to 1 if you did a gacos correction
 
 
-nxl  = xmax-xmin
+nxl = params['nxl']
 nyl  = ymax-ymin  
 
 #initial reference point
@@ -34,15 +34,15 @@ for p in pairs:
     unw_file = intdir + '/' + p + '/fine_lk.unw'
     unwImage = isceobj.createIntImage()
     unwImage.load(unw_file + '.xml')
-    stack.append(unwImage.memMap()[ymin+ii,xmin:xmax,0])
+    stack.append(unwImage.memMap()[:,:,0])
 stack = np.asarray(stack,dtype=np.float32)
 
 # SBAS Inversion to get displacement at each date
 ## Make G matrix for dates inversion
 G = np.zeros((nd+1,len(dn)))
 for ii,pair in enumerate(pairs):
-    a = np.asarray(np.where(dates==pair[0:8]),dtype=int)[0][0]
-    b = np.asarray(np.where(dates==pair[9:17]),dtype=int)[0][0]
+    a = dates.index(pair[0:8])
+    b = dates.index(pair[9:17])
     G[ii,a] = -1
     G[ii,b] = 1
 G[-1,0]=1
@@ -66,7 +66,8 @@ for ii in np.arange(0,len(alld[:,0]),4):
     plt.plot(np.reshape(alld[ii,:],(nyl,nxl))[:,560]) 
 
 # MASKING______________________________
-gam = np.load('gam.npy')
+gam = np.load('gam.npy')[ymin:ymax,:]
+gamflat = gam.flatten()
 
 
 #
@@ -108,7 +109,7 @@ gam = np.load('gam.npy')
 alld_flat=np.empty(alld.shape)
 for ii in np.arange(0,len(alld[:,0])):
     a = alld[ii,:]
-    alld_flat[ii,:] = alld[ii,:] - np.nanmedian(a[gam>.3])
+    alld_flat[ii,:] = alld[ii,:] - np.nanmedian(a[gamflat>.3])
 #    alld_flat[ii,np.where(hgt.flatten()==-1)]=np.nan
 plt.figure()
 for ii in np.arange(0,len(alld[:,0]),5):
@@ -179,8 +180,10 @@ water_elevation=-103
 rates,rate_uncertainty = invertRates.invertRates(data,params, seasonals=False,mcov_flag=True,water_elevation=water_elevation)
 
 rates = np.asarray(rates,dtype=np.float32)
+np.save('rates.npy', rates)
+np.save('rate_uncertainty.npy', rate_uncertainty)
 
-rates[gam<.3]=np.nan
+rates[gam<.5]=np.nan
 rate_uncertainty[gam<.3]=np.nan
 
 #fig,ax = plt.subplots(2,2,figsize=(8,5))
@@ -189,8 +192,8 @@ rate_uncertainty[gam<.3]=np.nan
 #ax[1,0].imshow(-rates_c,vmin=-25,vmax=25)
 #ax[1,1].imshow(rate_uncertainty_c,vmin=0,vmax=25)
 
-lo = geom['lon_ifg'][ymin:ymax,xmin:xmax]
-la = geom['lat_ifg'][ymin:ymax,xmin:xmax]
+lo = geom['lon_ifg'][ymin:ymax,:]
+la = geom['lat_ifg'][ymin:ymax,:]
 pad=0
 minlat=la.min()
 maxlat=la.max()
@@ -200,13 +203,15 @@ maxlon=lo.max()
 # Plot rate map
 
 plt.rc('font',size=12)
-plt.figure(figsize=(4,4))
+plt.figure(figsize=(12,12))
 m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
         llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
 m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
 m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-#m.arcgisimage(service='World_Shaded_Relief',xpixels=500)
-cf = m.pcolormesh(lo,la,rates,latlon=True, zorder=8,vmin=-10,vmax=10)
+m.arcgisimage(service='World_Shaded_Relief',xpixels=500)
+cf = m.pcolormesh(lo,la,rates,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=0,vmax=2)
+m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
+
 #m.plot(lo_p1,la_p1,color='red',zorder=40,latlon=True)
 cbar = m.colorbar(cf,location='bottom',pad="10%")
 cbar.set_label('cm')
@@ -220,9 +225,9 @@ m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
         llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
 m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
 m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-m.arcgisimage(service='World_Shaded_Relief',xpixels=1000)
-cf = m.pcolormesh(lo,la,rates_uncertainty,shading='flat',latlon=True, cmap=plt.cm.Spectral_r,zorder=8,vmin=0,vmax=8)
-#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
+m.arcgisimage(service='World_Shaded_Relief',xpixels=500)
+cf = m.pcolormesh(lo,la,rate_uncertainty,shading='flat',latlon=True, cmap=plt.cm.Spectral_r,zorder=8,vmin=0,vmax=1)
+m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
 #m.plot(lo_p1,la_p1,color='red',zorder=40,latlon=True)
 cbar = m.colorbar(cf,location='bottom',pad="10%")
 cbar.set_label('cm')
