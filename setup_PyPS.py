@@ -24,6 +24,7 @@ workdir = os.getcwd() # Use current directory as working directory
 skip = 3
 alks = int(3) # number of looks in azimuth
 rlks = int(12) # number of looks in range
+ifg_mode = True
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
 
@@ -38,13 +39,33 @@ if not os.path.isdir(tsdir):
 if not os.path.isdir(workdir + '/Figs'):
     os.mkdir(workdir + '/Figs')
 
-flist = glob.glob(slcdir + '/2*')
-# Convert pairs to dates
-dates = list()
-for f in flist:
-    dates.append(f[-8:])
-dates.sort()
-#dates = np.unique(np.asarray(dates,dtype = str))
+if ifg_mode:
+    pairs1=list()
+    pairs2=list()
+    pairs = list()
+    flist = glob.glob(intdir + '/2*_2*')
+    [pairs.append(f[-17:]) for f in flist]
+    [pairs1.append(f[-17:-9]) for f in flist]
+    [pairs2.append(f[-8:]) for f in flist]
+    pairs.sort();pairs1.sort();pairs2.sort()
+    dates = np.unique(np.vstack((pairs1,pairs2)))
+else:
+    flist = glob.glob(slcdir + '/2*')
+    # Convert pairs to dates
+    dates = list()
+    for f in flist:
+        dates.append(f[-8:])
+    dates.sort()
+    #dates = np.unique(np.asarray(dates,dtype = str))
+    pairs1=list()
+    pairs2=list()
+    pairs = list()
+    for ii,d in enumerate(dates):
+        for jj in np.arange(1,skip+1):
+            try:
+                pairs.append(dates[ii] + '_' + dates[ii+jj])
+            except:
+                pass
 
 dn = list()  
 dec_year = list()
@@ -59,16 +80,8 @@ for d in dates:
     dec_year.append(float(yr) + (doy/365.25))
 dn = np.asarray(dn)
 dn0 = dn-dn[0] # make relative to first date
-
-pairs1=list()
-pairs2=list()
-pairs = list()
-for ii,d in enumerate(dates):
-    for jj in np.arange(1,skip+1):
-        try:
-            pairs.append(dates[ii] + '_' + dates[ii+jj])
-        except:
-            pass
+    
+        
 nd = len(pairs)
 # rename geometry files to add 'full'
 os.system('mv merged/geom_master/hgt.rdr merged/geom_master/hgt.rdr.full')
