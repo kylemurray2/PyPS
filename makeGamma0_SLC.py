@@ -20,15 +20,15 @@ import cv2
 import os
 #from mroipac.filter.Filter import Filter
 
-overwrite = True
+overwrite =False
 
 params = np.load('params.npy').item()
 locals().update(params)
 dates = params['dates']
 
 # Make the gaussian filter we'll convolve with ifg
-rx = 10
-ry = 10
+rx = 5
+ry = 5
 rx2 = np.floor(rx*3)
 ry2 = np.floor(ry*3)
 gausx = np.exp( np.divide( -np.square(np.arange(-rx2,rx2)), np.square(rx)));
@@ -83,49 +83,48 @@ for ii,d in enumerate(dates[:-1]):
     else:
         print(d + ' already exists.')
 
-del(ifg_imag,ifg_imag_filt,ifg_real,ifg_real_filt,cpx0,cpxf,phsdiff)
+#del(ifg_imag,ifg_imag_filt,ifg_real,ifg_real_filt,cpx0,cpxf,phsdiff)
 
 #mad = lambda x: np.sqrt(np.nanmedian(abs(x - np.nanmedian(x,axis=0))**2),axis=0d)
 
 
-gamma0 =list()
+gamma0 =np.zeros((ny,nx)).astype(np.float32)
 # Make a stack of the diff images (memory mapped )
 # We have to do this in 20 subsections to save on memory
-chunks = np.linspace(0,params['ny'],17,dtype=int)
-for ii in np.arange(0,len(chunks)-1):
-    diff_stack = list()
+nblocks = 20
+
+
+diffImage = intimg.clone()   
+blocks = np.linspace(0,params['ny'],nblocks).astype(int)
+print('Processing gamma0 image in 20 separate blocks.')
+for ii in np.arange(0,len(blocks)-1):
+    print(str(ii) + '/' + str(len(blocks)) + ' blocks processed.')
+    diff_stack = np.zeros((len(dates[:-1]),nx,(blocks[ii+1]-blocks[ii]))).astype(np.float32)
     for jj,d in enumerate(dates[:-1]): 
         diff_file = params['slcdir'] + '/' + d + '/fine_diff.int'
-        diffImage = intimg.clone() 
         diffImage.load(diff_file + '.xml')
-        img = diffImage.memMap()[chunks[ii]:chunks[ii+1],:,0]
+        img = diffImage.memMap()[blocks[ii]:blocks[ii+1],:,0]
         ph = abs(np.arctan2(np.imag(img), np.real(img)).astype(np.float32))
-        ph[ph==0]=np.nan
-        diff_stack.append(ph)
-    # Find phase variance 
-#    gamma0.append(np.abs( np.nansum( np.asarray(diff_stack), axis=0)/len(dates))) 
-        gamma0.append(np.nanvar(np.asarray(diff_stack), axis=0))
-b=np.empty((params['ny'],params['nx']))
-for ii in np.arange(0,len(chunks)-1):
-    b[chunks[ii]:chunks[ii+1]]=gamma0[ii]
-gamma02 = a
-gamma02 = np.asarray(gamma02)
-gamma02=np.reshape(np.asarray(gamma02),(params['ny'],params['nx']))
-gamma02 /= gamma02.max()
-gamma02[np.where(gamma02==0)]=np.nan
-gamma02=np.asarray(gamma02, dtype=np.float32)
+        diff_stack[jj,:,:] = ph.T
+    diff_stack[diff_stack==0] = np.nan
+    gamma0[blocks[ii]:blocks[ii+1],0:nx] =np.nanvar(np.asarray(diff_stack), axis=0).T
 
+gamma0 /= gamma0[~np.isnan(gamma0)].max()
 
-# Save gamma0 file
-
-out = intimg.clone() # Copy the interferogram image from before
+#gamma0 = np.load('gam.npy')
+out = isceobj.createImage()
 out.filename = params['tsdir'] + '/gamma0.int'
-out.dump(params['tsdir'] + '/gamma0.int.xml') # Write out xml
-gamma02.tofile(out.filename) # Write file out
+out.bands = 1
+out.length = ny
+out.width = nx
+out.dataType = 'Float'
+out.dump(out.filename + '.xml') # Write out xml
+gamma0.tofile(out.filename) # Write file out
 
-plt.imshow(gamma02,vmin=0.1,vmax=.4)
+
+plt.imshow(gamma0,vmin=0.1,vmax=.4)
 plt.figure()
-plt.hist( gamma02.flatten()[~np.isnan(gamma02.flatten())], 40, edgecolor='black', linewidth=.2)
+plt.hist( gamma0.flatten()[~np.isnan(gamma0.flatten())], 40, edgecolor='black', linewidth=.2)
 plt.title('Phase stability histogram')
 plt.xlabel('Phase stability (1 is good, 0 is bad)')
 plt.show()
