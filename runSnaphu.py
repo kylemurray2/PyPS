@@ -19,7 +19,7 @@ ntilerow='30'
 ntilecol='30'
 gamma0_file = params['tsdir'] + '/gamma0_lk.int'
 pair=params['pairs'][0]
-for pair in params['pairs'][81:]:
+for pair in params['pairs']:
     infile = params['intdir']+ '/' + pair+'/fine_lk.r4'
     corfile = params['intdir']+ '/' + pair+'/cor_lk.r4'
     outfile = params['intdir']+ '/' + pair+'/fine_lk.unw'
