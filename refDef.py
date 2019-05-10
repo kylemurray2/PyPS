@@ -15,34 +15,34 @@ import invertRates
 
 
 params = np.load('params.npy').item()
-locals().update(params)
 geom = np.load('geom.npy').item()
+locals().update(params)
 locals().update(geom)
+
 
 atm_flag = 0 # set to 1 if you did a gacos correction
 
-
 nxl = params['nxl']
-nyl  = ymax-ymin  
+nyl  = params['ymax']-params['ymin']  
 
 #initial reference point
-r,c = 200,200
+r,c = 620,720
 
 # Get the ifgs
 stack = []
-for p in pairs:
-    unw_file = intdir + '/' + p + '/fine_lk.unw'
+for p in params['pairs']:
+    unw_file = params['intdir'] + '/' + p + '/fine_lk.unw'
     unwImage = isceobj.createIntImage()
     unwImage.load(unw_file + '.xml')
-    stack.append(unwImage.memMap()[:,:,0])
+    stack.append(unwImage.memMap()[:,:,0]-unwImage.memMap()[r,c,0])
 stack = np.asarray(stack,dtype=np.float32)
 
 # SBAS Inversion to get displacement at each date
 ## Make G matrix for dates inversion
-G = np.zeros((nd+1,len(dn)))
-for ii,pair in enumerate(pairs):
-    a = dates.index(pair[0:8])
-    b = dates.index(pair[9:17])
+G = np.zeros((params['nd']+1,len(params['dn'])))
+for ii,pair in enumerate(params['pairs']):
+    a = params['dates'].index(pair[0:8])
+    b = params['dates'].index(pair[9:17])
     G[ii,a] = -1
     G[ii,b] = 1
 G[-1,0]=1
@@ -52,10 +52,10 @@ N = np.dot(G,Gg)
 R = np.dot(Gg,G)
 
 # Do dates inversion
-alld=np.zeros((len(dn),nxl*nyl))
+alld=np.zeros((len(params['dn']),nxl*nyl))
 for ii in np.arange(0,nyl-1): #iterate through rows
-    tmp = np.zeros((nd+1,nxl))
-    for jj,pair in enumerate(pairs): #loop through each ifg and append to alld 
+    tmp = np.zeros((params['nd']+1,nxl))
+    for jj,pair in enumerate(params['pairs']): #loop through each ifg and append to alld 
         tmp[jj,:] = stack[jj,ii,:]
     alld[:,ii*nxl:nxl*ii+nxl] = np.dot(Gg, tmp)
 del(tmp)  
@@ -66,7 +66,7 @@ for ii in np.arange(0,len(alld[:,0]),4):
     plt.plot(np.reshape(alld[ii,:],(nyl,nxl))[:,560]) 
 
 # MASKING______________________________
-gam = np.load('gam.npy')[ymin:ymax,:]
+gam = np.load('gam.npy')[params['ymin']:params['ymax'],:]
 gamflat = gam.flatten()
 
 
@@ -176,15 +176,19 @@ np.save('alld_flat.npy', data)
 
 #data=np.load('alld_flat.npy')
 
-water_elevation=-103
+water_elevation=-11
+#rates_seas,seas_amps = invertRates.invertRates(data,params, seasonals=True,mcov_flag=True,water_elevation=water_elevation)
 rates,rate_uncertainty = invertRates.invertRates(data,params, seasonals=False,mcov_flag=True,water_elevation=water_elevation)
+
+#rateSeasDiff = rates_seas - rates
 
 rates = np.asarray(rates,dtype=np.float32)
 np.save('rates.npy', rates)
 np.save('rate_uncertainty.npy', rate_uncertainty)
+#rates = np.load('rates.npy')
+rates[gam<.2]=np.nan
 
-rates[gam<.5]=np.nan
-rate_uncertainty[gam<.3]=np.nan
+
 
 #fig,ax = plt.subplots(2,2,figsize=(8,5))
 #ax[0,0].imshow(-rates,vmin=-25,vmax=25)
@@ -192,34 +196,67 @@ rate_uncertainty[gam<.3]=np.nan
 #ax[1,0].imshow(-rates_c,vmin=-25,vmax=25)
 #ax[1,1].imshow(rate_uncertainty_c,vmin=0,vmax=25)
 
-lo = geom['lon_ifg'][ymin:ymax,:]
-la = geom['lat_ifg'][ymin:ymax,:]
-pad=0
-minlat=la.min()
-maxlat=la.max()
-minlon=lo.min()
-maxlon=lo.max()
+lo = geom['lon_ifg'][params['ymin']:params['ymax'],:]
+la = geom['lat_ifg'][params['ymin']:params['ymax'],:]
+hgt = geom['hgt_ifg'][params['ymin']:params['ymax'],:]
+hgt = np.round(hgt)
+rates[ hgt == -32] = np.nan
+rates[ hgt == -33] = np.nan
+rates[ hgt < -60] = np.nan
 
+rates[hgt < water_elevation] = np.nan
+
+minlat=la[500,500]
+maxlat=la[500,500]
+minlon=lo[500,500]
+maxlon=lo[500,500]
+
+pad=2
 # Plot rate map
-
 plt.rc('font',size=12)
 plt.figure(figsize=(12,12))
 m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
         llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
 m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
 m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-m.arcgisimage(service='World_Shaded_Relief',xpixels=500)
-cf = m.pcolormesh(lo,la,rates,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=0,vmax=2)
-m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
-
-#m.plot(lo_p1,la_p1,color='red',zorder=40,latlon=True)
+m.arcgisimage(service='World_Shaded_Relief',xpixels=2500)
+cf = m.pcolormesh(lo,la,rates,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=-3,vmax=3)
+#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
 cbar = m.colorbar(cf,location='bottom',pad="10%")
-cbar.set_label('cm')
+cbar.set_label('LOS rate (cm/yr)')
 plt.show()
 #plt.savefig('Figs/rate_map.png', transparent=True, dpi=500)
-#
-# Plot rate std
-plt.rc('font',size=12)
+
+## Plot seasonal amplitudes
+#plt.figure(figsize=(12,12))
+#m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
+#        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
+#m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
+#m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
+##m.arcgisimage(service='World_Shaded_Relief',xpixels=2500)
+#cf = m.pcolormesh(lo,la,seas_amps,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=0,vmax=3)
+#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
+#cbar = m.colorbar(cf,location='bottom',pad="10%")
+#cbar.set_label('LOS seasonal amplitude (cm)')
+#plt.show()
+#plt.savefig('Figs/seas_amps_map.png', transparent=True, dpi=500)
+
+## Plot rateSeasDiff
+#plt.figure(figsize=(12,12))
+#m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
+#        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
+#m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
+#m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
+#m.arcgisimage(service='World_Shaded_Relief',xpixels=500)
+#cf = m.pcolormesh(lo,la,rateSeasDiff,shading='flat',latlon=True, cmap=plt.cm.Spectral_r,zorder=8,vmin=-.05,vmax=.05)
+#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
+#cbar = m.colorbar(cf,location='bottom',pad="10%")
+#cbar.set_label('difference between rates estimates seasonal minus linear (cm/yr)')
+##plt.savefig('Figs/rates_uncertainty_map.png', transparent=True, dpi=500)
+#plt.show()
+
+
+# Plot rate uncertainty 95% confidence
 plt.figure(figsize=(12,12))
 m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
         llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
@@ -230,7 +267,8 @@ cf = m.pcolormesh(lo,la,rate_uncertainty,shading='flat',latlon=True, cmap=plt.cm
 m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
 #m.plot(lo_p1,la_p1,color='red',zorder=40,latlon=True)
 cbar = m.colorbar(cf,location='bottom',pad="10%")
-cbar.set_label('cm')
+cbar.set_label('95% confidence (cm/yr)')
+#plt.savefig('Figs/rates_uncertainty_map.png', transparent=True, dpi=500)
 plt.show()
 
 
@@ -241,14 +279,14 @@ plt.show()
 #rate_uncertainty[np.where(gamma0_lk<.2)]=np.nan #masks the low coherence areas
 #rate_uncertainty[np.where( (hgt_ifg<water_elevation) ) ]=np.nan # masks the water
 #
-## Save rates
-#fname = tsdir + '/rates_flat.unw'
-#out = isceobj.createIntImage() # Copy the interferogram image from before
-#out.dataType = 'FLOAT'
-#out.filename = fname
-#out.width = nxl
-#out.length = nyl
-#out.dump(fname + '.xml') # Write out xml
-#rates.tofile(out.filename) # Write file out
-#out.renderHdr()
-#out.renderVRT()
+# Save rates
+fname = params['tsdir'] + '/rates_flat.unw'
+out = isceobj.createIntImage() # Copy the interferogram image from before
+out.dataType = 'FLOAT'
+out.filename = fname
+out.width = nxl
+out.length = nyl
+out.dump(fname + '.xml') # Write out xml
+rates.tofile(out.filename) # Write file out
+out.renderHdr()
+out.renderVRT()
