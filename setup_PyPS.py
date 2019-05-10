@@ -21,10 +21,10 @@ from mroipac.looks.Looks import Looks
 #maxlat = bbox[0]; minlat = bbox[1]; minlon = bbox[2]; maxlon = bbox[3]
 workdir = os.getcwd() # Use current directory as working directory
  # working directory (should be where merged is)
-skip = 3
-alks = int(3) # number of looks in azimuth
-rlks = int(12) # number of looks in range
-ifg_mode = True
+skip = 1
+alks = int(18) # number of looks in azimuth
+rlks = int(54) # number of looks in range
+ifg_mode = False
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
 
@@ -195,7 +195,7 @@ mergeddir =workdir + '/merged'
 intdir = mergeddir + '/interferograms'
 tsdir = workdir + '/TS'
 
-
+plt.imshow(hgt_ifg)
 
 # Save arrays and variables to a dictionary 'params'
 params = dict()
