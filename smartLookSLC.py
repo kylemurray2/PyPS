@@ -15,12 +15,17 @@ import numpy as np
 import isceobj
 from matplotlib import pyplot as plt
 from mpl_toolkits.basemap import Basemap
-
 import cv2
 import os
+
+sea = -1 # sealevel
+
+
 #from mroipac.filter.Filter import Filter
-params = np.load('params.npy').item()
+params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
+geom = np.load('geom.npy',allow_pickle=True).item()
+locals().update(geom)
 #params['slcdir'] = '/data/kdm95/Delta/p42/merged/SLC_VV'
 #np.save('params.npy',params)
 nxl= params['nxl']
@@ -55,11 +60,13 @@ if not os.path.isfile('gam.npy'):
     out.filename = params['tsdir'] + '/gamma0_lk.int'
     out.width = nxl
     out.length = nyl
-    out.dump(tsdir + '/gamma0_lk.int.xml') # Write out xml
-    gam.tofile(tsdir + '/gamma0_lk.int') # Write file out
+    out.dump(out.filename + '.xml') # Write out xml
+    gam.tofile(out.filename) # Write file out
     out.renderHdr()
     out.renderVRT()
+    gam[geom['hgt_ifg'] < sea] = 0
     np.save('gam.npy',gam)
+    del(gam)
 else: 
     print('gam.npy already exists')
 
@@ -83,8 +90,13 @@ for pair in params['pairs']: #loop through each ifg and save to
         slcImage.load(f + '.xml')
         slc2 = slcImage.memMap()[:,:,0]
         ifg = np.multiply(slc1,np.conj(slc2))
+        
+        del(slc1,slc2)
+        
         ifg_real = np.real(ifg)
         ifg_imag = np.imag(ifg)
+        
+        del(ifg)
     
         ifg_real_filt0 = cv2.filter2D(ifg_real,-1, win)
         ifg_imag_filt0 = cv2.filter2D(ifg_imag,-1, win)
@@ -93,11 +105,17 @@ for pair in params['pairs']: #loop through each ifg and save to
         ifg_real_filt = cv2.filter2D(ifg_real,-1, win)
         ifg_imag_filt = cv2.filter2D(ifg_imag,-1, win)
         
+        del(ifg_real,ifg_imag)
+        
         rea_lk = np.reshape(ifg_real_filt[y,x],(params['nyl'],params['nxl']))
         ima_lk = np.reshape(ifg_imag_filt[y,x],(params['nyl'],params['nxl']))
         
+        del(ifg_real_filt,ifg_imag_filt)
+        
         phs_lk = np.arctan2(ima_lk, rea_lk)
         phs_lk[np.isnan(phs_lk)] = 0
+        phs_lk[geom['hgt_ifg'] < sea] = 0
+        
                 # Save downlooked ifg
         out = isceobj.createImage() # Copy the interferogram image from before
         out.dataType = 'FLOAT'
@@ -109,11 +127,14 @@ for pair in params['pairs']: #loop through each ifg and save to
         out.renderHdr()
         out.renderVRT() 
         
+        
     if not os.path.isfile(params['intdir'] + '/' + pair + '/cor_lk.int'):
         cor_lk = np.log(  np.abs(  (rea_lk+(1j*ima_lk)).astype(np.complex64)) )
         cor_lk /= cor_lk[~np.isnan(cor_lk)].max()
         cor_lk[np.isinf(cor_lk)] = 0
         cor_lk[np.isnan(cor_lk)] = 0
+        cor_lk[geom['hgt_ifg'] < sea] = 0
+        
         out = isceobj.createImage() # Copy the interferogram image from before
         out.dataType = 'FLOAT'
         out.filename = params['intdir'] + '/' + pair + '/cor_lk.r4'
