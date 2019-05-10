@@ -13,14 +13,13 @@ work in progress
 
 import numpy as np
 import isceobj
-import pickle
 from matplotlib import pyplot as plt
 from mpl_toolkits.basemap import Basemap
 
 import cv2
 import os
 #from mroipac.filter.Filter import Filter
-params = np.load('params.npy').item()
+params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 
 f = tsdir + '/gamma0.int'
