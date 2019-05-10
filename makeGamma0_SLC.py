@@ -22,7 +22,7 @@ import os
 
 overwrite =False
 
-params = np.load('params.npy').item()
+params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 dates = params['dates']
 
@@ -58,40 +58,41 @@ for ii,d in enumerate(dates[:-1]):
         slcImage.load(f + '.xml')
         slc2 = slcImage.memMap()[:,:,0]
         ifg = np.multiply(slc1,np.conj(slc2))
+        del(slc1,slc2)
         ifg_real = np.real(ifg)
         ifg_imag = np.imag(ifg)
+        del(ifg)
 #        ifg_real[np.where(ifg_real==0)] = np.nan
 #        ifg_imag[np.where(ifg_real==0)] = np.nan
         #filter real and imaginary parts    
         ifg_real_filt = cv2.filter2D(ifg_real,-1, gaus)
         ifg_imag_filt = cv2.filter2D(ifg_imag,-1, gaus)  
-        phs_filt = np.arctan2(ifg_imag_filt, ifg_real_filt).astype(np.float32)
-
+#        phs_filt = np.arctan2(ifg_imag_filt, ifg_real_filt).astype(np.float32)
+        
         # Difference them 
         cpx0    = ifg_real      + 1j * ifg_imag
+        del(ifg_real,ifg_imag)
         cpxf    = ifg_real_filt + 1j * ifg_imag_filt
+        del(ifg_real_filt,ifg_imag_filt)
         cpx0   /= abs(cpx0)
         cpxf   /= abs(cpxf)
         phsdiff = np.multiply(cpx0, np.conj(cpxf))
-        
+        del(cpxf,cpx0)
         #save diff ifg
         intImage = intimg.clone() # Copy the interferogram image from before
         intImage.filename = params['slcdir'] + '/' + d + '/fine_diff.int'
         intImage.dump(params['slcdir']  + '/' + d + '/fine_diff.int.xml') # Write out xml
         phsdiff.tofile(params['slcdir'] + '/' + d + '/fine_diff.int') # Write file out
-
+        del(phsdiff)
     else:
         print(d + ' already exists.')
-
-#del(ifg_imag,ifg_imag_filt,ifg_real,ifg_real_filt,cpx0,cpxf,phsdiff)
-
 #mad = lambda x: np.sqrt(np.nanmedian(abs(x - np.nanmedian(x,axis=0))**2),axis=0d)
 
 
 gamma0 =np.zeros((ny,nx)).astype(np.float32)
 # Make a stack of the diff images (memory mapped )
 # We have to do this in 20 subsections to save on memory
-nblocks = 20
+nblocks = 60
 
 
 diffImage = intimg.clone()   
@@ -109,9 +110,14 @@ for ii in np.arange(0,len(blocks)-1):
     diff_stack[diff_stack==0] = np.nan
     gamma0[blocks[ii]:blocks[ii+1],0:nx] =np.nanvar(np.asarray(diff_stack), axis=0).T
 
-gamma0 /= gamma0[~np.isnan(gamma0)].max()
+plt.imshow(gamma0)
 
-#gamma0 = np.load('gam.npy')
+
+gamma0 = 1-gamma0
+gamma0 += abs( gamma0.min())
+gamma0 /= gamma0.max()
+gamma0[np.isnan(gamma0)] = 0
+
 out = isceobj.createImage()
 out.filename = params['tsdir'] + '/gamma0.int'
 out.bands = 1
@@ -121,6 +127,7 @@ out.dataType = 'Float'
 out.dump(out.filename + '.xml') # Write out xml
 gamma0.tofile(out.filename) # Write file out
 
+#gamma0 *= np.sqrt(gamma0)
 
 plt.imshow(gamma0,vmin=0.1,vmax=.4)
 plt.figure()
