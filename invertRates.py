@@ -49,8 +49,9 @@ def invertRates(data,params, seasonals=False,mcov_flag=False,water_elevation=-10
         r_nomsk = rates
         amps = np.reshape(amplitudes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100
         a_nomsk = amps
-        plt.figure();plt.imshow(np.flipud(r_nomsk),vmin=-2,vmax=2)
-        plt.figure();plt.imshow(np.flipud(a_nomsk),vmin=0,vmax=2)
+#        plt.figure();plt.imshow(np.flipud(r_nomsk),vmin=-2,vmax=2)
+#        plt.figure();plt.imshow(np.flipud(a_nomsk),vmin=0,vmax=2)
+        return rates, amps
     else:
         G = np.vstack([dn0, np.ones((len(dn0),1)).flatten()]).T
         Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
@@ -71,7 +72,7 @@ def invertRates(data,params, seasonals=False,mcov_flag=False,water_elevation=-10
             rate_uncertainty = np.reshape(rate_uncertainty,(nyl,nxl))
             rate_uncertainty= rate_uncertainty*lam/(4*np.pi)*100*365 #cm/yr
 
-    return rates,rate_uncertainty
+        return rates,resstd
 
 #
 #
