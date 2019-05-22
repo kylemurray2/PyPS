@@ -5,8 +5,8 @@ import os
 from scipy.signal import convolve2d as conv2
 
 # SET THESE
-gamThresh = 0
-corThresh = 0 
+gamThresh = .65
+corThresh = .35
 
 params = np.load('params.npy',allow_pickle=True).item()
 geom = np.load('geom.npy',allow_pickle=True).item()
@@ -58,7 +58,7 @@ for i,p in enumerate(pairs):
     intfile_2pi = intdir + '/' + p  + '/' + '2pi.unw'
     intfile_unw_file = intdir + '/' + p  + '/' + 'new.unw'
     
-    if not os.path.isfile(intfile_unw_file + 'i'):
+    if not os.path.isfile(intfile_unw_file):
         print('unwrapping ' + intfile)
 #        os.remove('maskfill.int')
 #        os.remove('snaphu/snaphu.out')
@@ -69,6 +69,8 @@ for i,p in enumerate(pairs):
         im = isceobj.createImage()
         im.load(corfile + '.xml')
         mask2 = im.memMap()[:,:,0]
+        mask2 = mask2+ abs(mask2[~np.isnan(mask2)].min())
+        mask2/=mask2[~np.isnan(mask2)].max()
 
         # Make the mask using the gamma0 and correlation metrics
         mask = np.zeros(mask2.shape)
