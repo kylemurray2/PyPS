@@ -45,7 +45,7 @@ intimg = isceobj.createIntImage()
 intimg.width = slcImage.width
 intimg.length = slcImage.length
 for ii,d in enumerate(dates[:-1]): 
-    if not os.path.isfile(params['slcdir'] + '/' + d + '/fine_diff.int') or overwrite:
+    if not os.path.isfile(params['slcdir'] + '/' + d + '/fine_adiff.int') or overwrite:
         print('working on ' + d)
         d2 = dates[ii+1]
         #load ifg real and imaginary parts
@@ -113,10 +113,10 @@ for ii in np.arange(0,len(blocks)-1):
 plt.imshow(gamma0)
 
 
+
 gamma0 = 1-gamma0
-gamma0 += abs( gamma0.min())
-gamma0 /= gamma0.max()
-gamma0[np.isnan(gamma0)] = 0
+gamma0 += abs( gamma0[~np.isnan(gamma0)].min())
+gamma0 /= gamma0[~np.isnan(gamma0)].max()
 
 out = isceobj.createImage()
 out.filename = params['tsdir'] + '/gamma0.int'
@@ -129,7 +129,7 @@ gamma0.tofile(out.filename) # Write file out
 
 #gamma0 *= np.sqrt(gamma0)
 
-plt.imshow(gamma0,vmin=0.1,vmax=.4)
+plt.imshow(gamma0)
 plt.figure()
 plt.hist( gamma0.flatten()[~np.isnan(gamma0.flatten())], 40, edgecolor='black', linewidth=.2)
 plt.title('Phase stability histogram')
