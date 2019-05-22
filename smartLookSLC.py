@@ -18,7 +18,7 @@ from mpl_toolkits.basemap import Basemap
 import cv2
 import os
 
-sea = -1 # sealevel
+sea = -33 # sealevel
 
 
 #from mroipac.filter.Filter import Filter
