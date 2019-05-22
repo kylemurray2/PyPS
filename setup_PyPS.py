@@ -22,8 +22,8 @@ from mroipac.looks.Looks import Looks
 workdir = os.getcwd() # Use current directory as working directory
  # working directory (should be where merged is)
 skip = 1
-alks = int(18) # number of looks in azimuth
-rlks = int(54) # number of looks in range
+alks = int(4) # number of looks in azimuth
+rlks = int(16) # number of looks in range
 ifg_mode = False
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
@@ -163,8 +163,10 @@ for p in np.arange(l+1,nyl):
         break
 l+=1
 
-ymin=l
-ymax=p
+ymin=l+1
+ymax=p-1
+xmin=0
+xmax=nxl
 
 ul = (lon_ifg[l+1,1],lat_ifg[l+1,1])
 ur = (lon_ifg[l+1,-2],lat_ifg[l+1,-2])
@@ -207,9 +209,12 @@ params['dn'] =           dn
 params['dn0'] =          dn0
 params['nd'] =           nd
 params['lam'] =          lam
+
 params['workdir'] =      workdir
 params['intdir'] =       intdir
 params['tsdir'] =        tsdir
+params['mergeddir'] =    mergeddir
+
 params['ny'] =           ny
 params['nx'] =           nx
 params['nxl'] =          nxl
@@ -218,9 +223,10 @@ params['lon_bounds'] =   lon_bounds
 params['lat_bounds'] =   lat_bounds
 params['ymin'] =         ymin
 params['ymax'] =         ymax
+params['xmin'] =         xmin
+params['xmax'] =         xmax
 params['alks'] =         alks
 params['rlks'] =         rlks
-params['mergeddir'] =    mergeddir
 params['intdir'] =       intdir
 params['tsdir'] =        tsdir
 params['slcdir'] =        slcdir
