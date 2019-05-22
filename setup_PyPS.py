@@ -22,8 +22,9 @@ from mroipac.looks.Looks import Looks
 workdir = os.getcwd() # Use current directory as working directory
  # working directory (should be where merged is)
 skip = 1
-alks = int(4) # number of looks in azimuth
-rlks = int(16) # number of looks in range
+alks = int(3) # number of looks in azimuth
+rlks = int(12) # number of looks in range
+seaLevel = -200
 ifg_mode = False
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
@@ -209,6 +210,7 @@ params['dn'] =           dn
 params['dn0'] =          dn0
 params['nd'] =           nd
 params['lam'] =          lam
+params['seaLevel'] =          seaLevel
 
 params['workdir'] =      workdir
 params['intdir'] =       intdir

@@ -13,14 +13,15 @@ import os
 params = np.load('params.npy').item()
 locals().update(params)
 
-
 nproc='20'
-ntilerow='30'
-ntilecol='30'
+ntilerow='5'
+ntilecol='10'
+
 gamma0_file = params['tsdir'] + '/gamma0_lk.int'
 pair=params['pairs'][0]
+
 for pair in params['pairs']:
-    infile = params['intdir']+ '/' + pair+'/fine_lk.r4'
+    infile = params['intdir']+ '/' + pair+'/fine_lk_filt.int'
     corfile = params['intdir']+ '/' + pair+'/cor_lk.r4'
     outfile = params['intdir']+ '/' + pair+'/fine_lk.unw'
     if not os.path.isfile(outfile):
@@ -58,7 +59,7 @@ for pair in params['pairs']:
         conf.append('# Statistical-cost mode (TOPO, DEFO, SMOOTH, or NOSTATCOSTS)      \n')
         conf.append('STATCOSTMODE    SMOOTH                                            \n')
         conf.append('                                                                  \n')
-        conf.append('INFILEFORMAT            FLOAT_DATA                              \n')
+        conf.append('INFILEFORMAT            COMPLEX_DATA                              \n')
         conf.append('#UNWRAPPEDINFILEFORMAT   COMPLEX_DATA                             \n')
         conf.append('OUTFILEFORMAT           FLOAT_DATA                                \n')
         conf.append('CORRFILEFORMAT          FLOAT_DATA                               \n')

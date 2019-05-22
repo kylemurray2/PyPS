@@ -45,15 +45,18 @@ intimg = isceobj.createIntImage()
 intimg.width = slcImage.width
 intimg.length = slcImage.length
 for ii,d in enumerate(dates[:-1]): 
-    if not os.path.isfile(params['slcdir'] + '/' + d + '/fine_adiff.int') or overwrite:
+    if not os.path.isfile(params['slcdir'] + '/' + d + '/fine_diff.int') or overwrite:
         print('working on ' + d)
         d2 = dates[ii+1]
         #load ifg real and imaginary parts
         f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full'
+        os.system('fixImageXml.py -i ' + f + ' -f')
         slcImage = isceobj.createSlcImage()
         slcImage.load(f + '.xml')
         slc1 = slcImage.memMap()[:,:,0]
         f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
+        os.system('fixImageXml.py -i ' + f + ' -f')
+
         slcImage = isceobj.createSlcImage()
         slcImage.load(f + '.xml')
         slc2 = slcImage.memMap()[:,:,0]

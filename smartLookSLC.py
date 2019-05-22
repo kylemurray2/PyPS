@@ -18,8 +18,8 @@ from mpl_toolkits.basemap import Basemap
 import cv2
 import os
 
-sea = -33 # sealevel
-
+filterFlag = True
+filterStrength = '0.4'
 
 #from mroipac.filter.Filter import Filter
 params = np.load('params.npy',allow_pickle=True).item()
@@ -64,7 +64,7 @@ if not os.path.isfile('gam.npy'):
     gam.tofile(out.filename) # Write file out
     out.renderHdr()
     out.renderVRT()
-    gam[geom['hgt_ifg'] < sea] = 0
+    gam[geom['hgt_ifg'] < seaLevel] = 0
     np.save('gam.npy',gam)
     del(gam)
 else: 
@@ -82,10 +82,14 @@ for pair in params['pairs']: #loop through each ifg and save to
         d = pair[0:8]
         #load ifg real and imaginary parts
         f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full'
+        os.system('fixImageXml.py -i ' + f + ' -f')
+
         slcImage = isceobj.createSlcImage()
         slcImage.load(f + '.xml')
         slc1 = slcImage.memMap()[:,:,0]
         f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
+        os.system('fixImageXml.py -i ' + f + ' -f')
+
         slcImage = isceobj.createSlcImage()
         slcImage.load(f + '.xml')
         slc2 = slcImage.memMap()[:,:,0]
@@ -112,28 +116,35 @@ for pair in params['pairs']: #loop through each ifg and save to
         
         del(ifg_real_filt,ifg_imag_filt)
         
-        phs_lk = np.arctan2(ima_lk, rea_lk)
-        phs_lk[np.isnan(phs_lk)] = 0
-        phs_lk[geom['hgt_ifg'] < sea] = 0
-        
+#        phs_lk = np.arctan2(ima_lk, rea_lk)
+#        phs_lk[np.isnan(phs_lk)] = 0
+#        phs_lk[geom['hgt_ifg'] < seaLevel] = 0
+        cpx = ima_lk*1j + rea_lk
+        cpx[np.isnan(cpx)] = 0
+        cpx[geom['hgt_ifg'] < seaLevel] = 0
                 # Save downlooked ifg
         out = isceobj.createImage() # Copy the interferogram image from before
-        out.dataType = 'FLOAT'
-        out.filename = params['intdir'] + '/' + pair + '/fine_lk.r4'
+        out.dataType = 'CFLOAT'
+        of = params['intdir'] + '/' + pair + '/fine_lk.int'
+        out.filename = of
         out.width = params['nxl']
         out.length = params['nyl']
-        out.dump(params['intdir'] + '/' + pair + '/fine_lk.r4.xml') # Write out xml
-        phs_lk.tofile(params['intdir'] + '/' + pair + '/fine_lk.r4') # Write file out
+        out.dump(of + '.xml') # Write out xml
+        cpx.tofile(of) # Write file out
         out.renderHdr()
         out.renderVRT() 
         
+        if filterFlag:
+            offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
+            command = 'python /home/kdm95/Software/isce2/contrib/stack/topsStack/FilterAndCoherence.py -i ' + of + ' -f ' +  offilt + ' -s ' + filterStrength
+            os.system(command)
         
-    if not os.path.isfile(params['intdir'] + '/' + pair + '/cor_lk.int'):
+    if not os.path.isfile(params['intdir'] + '/' + pair + '/cor_lk.r4'):
         cor_lk = np.log(  np.abs(  (rea_lk+(1j*ima_lk)).astype(np.complex64)) )
         cor_lk /= cor_lk[~np.isnan(cor_lk)].max()
         cor_lk[np.isinf(cor_lk)] = 0
         cor_lk[np.isnan(cor_lk)] = 0
-        cor_lk[geom['hgt_ifg'] < sea] = 0
+        cor_lk[geom['hgt_ifg'] < seaLevel] = 0
         
         out = isceobj.createImage() # Copy the interferogram image from before
         out.dataType = 'FLOAT'
@@ -145,3 +156,5 @@ for pair in params['pairs']: #loop through each ifg and save to
         
         out.renderHdr()
         out.renderVRT()  
+        
+        
