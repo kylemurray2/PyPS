@@ -29,8 +29,9 @@ def invertRates(data,params, seasonals=False,mcov_flag=False,water_elevation=-10
         mcov_flag is the model covariance and works only with seasonals=False for now.
         Water elevation is usually not zero (relative to wgs84 ellipsoid.'''
 
-    nxl = params['nxl'] #  params['xmax'] - params['xmin']
     nyl = params['ymax'] - params['ymin']
+    nxl = params['xmax'] - params['xmin']
+
     lam = params['lam']
     
     dn0 = params['dn'] - params['dn'][0]
