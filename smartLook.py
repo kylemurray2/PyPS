@@ -65,6 +65,9 @@ gaus = gausx[:, np.newaxis] * gausy[np.newaxis, :]
 gaus = gaus-gaus.min()
 gaus  = gaus/np.sum(gaus.flatten())
 
+msk_filt = cv2.filter2D(gamma0,-1, win)
+
+
 for pair in pairs: #loop through each ifg and save to 
     f = intdir + '/' + pair + '/fine.int'
     if not os.path.isfile(f):
@@ -83,8 +86,8 @@ for pair in pairs: #loop through each ifg and save to
         ifg_real_filt = cv2.filter2D(ifg_real,-1, win)
         ifg_imag_filt = cv2.filter2D(ifg_imag,-1, win)
         
-        rea_lk = np.reshape(ifg_real_filt[y,x],(nyl,nxl))
-        ima_lk = np.reshape(ifg_imag_filt[y,x],(nyl,nxl))
+        rea_lk = np.reshape(ifg_real_filt/msk_filt[y,x],(nyl,nxl))
+        ima_lk = np.reshape(ifg_imag_filt/msk_filt[y,x],(nyl,nxl))
     #    phs_lk1 = np.arctan2(ima_lk, rea_lk)
         phs_lk1 = (rea_lk+(1j*ima_lk)).astype(np.complex64)
     
