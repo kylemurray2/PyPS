@@ -73,22 +73,24 @@ else:
 if not os.path.isdir(params['intdir']):
     os.system('mkdir ' + params['intdir'])
 
+msk_filt = cv2.filter2D(gamma0,-1, win)
+
 for pair in params['pairs']: #loop through each ifg and save to 
     if not os.path.isdir(params['intdir'] + '/' + pair):
         os.system('mkdir ' + params['intdir']+ '/' + pair)
-    if not os.path.isfile(params['intdir'] + '/' + pair + '/fine_lk.int'):
+    if not os.path.isfile(params['intdir'] + '/' + pair + '/fine_lk_filt.int'):
         print('working on ' + pair)
         d2 = pair[9:]
         d = pair[0:8]
         #load ifg real and imaginary parts
         f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full'
-        os.system('fixImageXml.py -i ' + f + ' -f')
+#        os.system('fixImageXml.py -i ' + f + ' -f')
 
         slcImage = isceobj.createSlcImage()
         slcImage.load(f + '.xml')
         slc1 = slcImage.memMap()[:,:,0]
         f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
-        os.system('fixImageXml.py -i ' + f + ' -f')
+#        os.system('fixImageXml.py -i ' + f + ' -f')
 
         slcImage = isceobj.createSlcImage()
         slcImage.load(f + '.xml')
@@ -111,8 +113,8 @@ for pair in params['pairs']: #loop through each ifg and save to
         
         del(ifg_real,ifg_imag)
         
-        rea_lk = np.reshape(ifg_real_filt[y,x],(params['nyl'],params['nxl']))
-        ima_lk = np.reshape(ifg_imag_filt[y,x],(params['nyl'],params['nxl']))
+        rea_lk = np.reshape((ifg_real_filt/msk_filt)[y,x],(params['nyl'],params['nxl']))
+        ima_lk = np.reshape((ifg_imag_filt/msk_filt)[y,x],(params['nyl'],params['nxl']))
         
         del(ifg_real_filt,ifg_imag_filt)
         
@@ -156,5 +158,36 @@ for pair in params['pairs']: #loop through each ifg and save to
         
         out.renderHdr()
         out.renderVRT()  
-        
+
+# Downlook geom files this way too
+
+# Get bounding coordinates (Frame)
+f_lon = mergeddir + '/geom_master/lon.rdr.full'
+f_lat = mergeddir + '/geom_master/lat.rdr.full'
+f_hgt = mergeddir + '/geom_master/hgt.rdr.full'
+
+Image = isceobj.createImage()
+Image.load(f_lon + '.xml')
+lon_ifg2 = Image.memMap()[:,:,0].copy().astype(np.float32)
+lon_lk2 = cv2.filter2D(lon_ifg2,-1, win)
+lonlk = np.reshape(lon_lk2[y,x],(params['nyl'],params['nxl']))
+
+
+Image = isceobj.createImage()
+Image.load(f_lat + '.xml')
+lat_ifg2 = Image.memMap()[:,:,0].copy().astype(np.float32)
+lat_lk2 = cv2.filter2D(lat_ifg2,-1, win)
+latlk = np.reshape(lat_lk2[y,x],(params['nyl'],params['nxl']))
+
+Image = isceobj.createImage()
+Image.load(f_hgt + '.xml')
+hgt_ifg2 = Image.memMap()[:,:,0].copy().astype(np.float32)
+hgt_lk2 = cv2.filter2D(hgt_ifg2,-1, win)
+hgtlk = np.reshape(hgt_lk2[y,x],(params['nyl'],params['nxl']))
+
+geom = {}
+geom['lon_ifg'] = lonlk
+geom['lat_ifg'] = latlk
+geom['hgt_ifg'] = hgtlk
+np.save('geom.npy',geom)
         
