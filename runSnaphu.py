@@ -14,7 +14,7 @@ params = np.load('params.npy').item()
 locals().update(params)
 
 nproc='20'
-ntilerow='5'
+ntilerow='6'
 ntilecol='10'
 
 gamma0_file = params['tsdir'] + '/gamma0_lk.int'
