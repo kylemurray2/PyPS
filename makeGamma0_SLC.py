@@ -50,12 +50,12 @@ for ii,d in enumerate(dates[:-1]):
         d2 = dates[ii+1]
         #load ifg real and imaginary parts
         f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full'
-        os.system('fixImageXml.py -i ' + f + ' -f')
+#        os.system('fixImageXml.py -i ' + f + ' -f')
         slcImage = isceobj.createSlcImage()
         slcImage.load(f + '.xml')
         slc1 = slcImage.memMap()[:,:,0]
         f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
-        os.system('fixImageXml.py -i ' + f + ' -f')
+#        os.system('fixImageXml.py -i ' + f + ' -f')
 
         slcImage = isceobj.createSlcImage()
         slcImage.load(f + '.xml')
