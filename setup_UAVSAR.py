@@ -28,9 +28,9 @@ workdir = os.getcwd() # Use current directory as working directory
 skip = 1
 alks = int(4) # number of looks in azimuth
 rlks = int(4) # number of looks in range
-
+seaLevel = -200
 #1x4 looks
-nx = 4805
+nx = 4781
 ny = 8333 
 
 ifg_mode = False
@@ -255,6 +255,7 @@ params['pairs'] =        pairs
 params['dec_year'] =     dec_year
 params['dn'] =           dn
 params['dn0'] =          dn0
+params['seaLevel'] = seaLevel
 nd = len(pairs)
 params['nd'] =           nd
 params['lam'] =          lam
