@@ -5,41 +5,56 @@ Created on Mon Aug 13 12:35:54 2018
 
 @author: kdm95
 """
-
 import numpy as np
 import isceobj
 from matplotlib import pyplot as plt
-from scipy.signal import butter, lfilter
 from mpl_toolkits.basemap import Basemap
 import invertRates 
+import scipy.signal as signal
 
-
-params = np.load('params.npy').item()
-geom = np.load('geom.npy').item()
+params = np.load('params.npy',allow_pickle=True).item()
+geom = np.load('geom.npy',allow_pickle=True).item()
 locals().update(params)
 locals().update(geom)
 
-
-atm_flag = 0 # set to 1 if you did a gacos correction
+removePlane = True
+maxElev = 400
 
 nxl = params['nxl']
-nyl  = params['ymax']-params['ymin']  
+nyl  = params['ymax']-params['ymin']
 
-#initial reference point
-r,c = 620,720
+hgt_ifg = hgt_ifg[ymin:ymax,:]
+lon_ifg = lon_ifg[ymin:ymax,:]
+lat_ifg = lat_ifg[ymin:ymax,:]
+# MASKING______________________________
+gam = np.load('gam.npy')[ymin:ymax,xmin:xmax]
+gamFlat = gam.flatten()
 
-# Get the ifgs
+plt.imshow(gam)
+r,c = 896,760
+X,Y = np.meshgrid(range(nxl),range(nyl))
+
 stack = []
+#start = 35
+#end = 77
+##params['decYearCut'] = params['dec_year'][start:end-1]
+##np.save('params.npy',params)
+#params['pairs'] = params['pairs'][start:end-1]
+#params['dates'] = params['dates'][start:end]
+#params['dn']= params['dn'][start:end]
+
 for p in params['pairs']:
     unw_file = params['intdir'] + '/' + p + '/fine_lk.unw'
     unwImage = isceobj.createIntImage()
     unwImage.load(unw_file + '.xml')
-    stack.append(unwImage.memMap()[:,:,0]-unwImage.memMap()[r,c,0])
+    unw = unwImage.memMap()[ymin:ymax,xmin:xmax,0] - unwImage.memMap()[r,c,0]
+    stack.append(unw)
 stack = np.asarray(stack,dtype=np.float32)
 
+plt.imshow(stack[100,:,:])
 # SBAS Inversion to get displacement at each date
 ## Make G matrix for dates inversion
-G = np.zeros((params['nd']+1,len(params['dn'])))
+G = np.zeros((len(params['dates']),len(params['dates'])))
 for ii,pair in enumerate(params['pairs']):
     a = params['dates'].index(pair[0:8])
     b = params['dates'].index(pair[9:17])
@@ -52,241 +67,191 @@ N = np.dot(G,Gg)
 R = np.dot(Gg,G)
 
 # Do dates inversion
-alld=np.zeros((len(params['dn']),nxl*nyl))
+alld=np.zeros((len(params['dates']),nxl*nyl))
 for ii in np.arange(0,nyl-1): #iterate through rows
-    tmp = np.zeros((params['nd']+1,nxl))
+    tmp = np.zeros((len(params['dates']),nxl))
     for jj,pair in enumerate(params['pairs']): #loop through each ifg and append to alld 
         tmp[jj,:] = stack[jj,ii,:]
     alld[:,ii*nxl:nxl*ii+nxl] = np.dot(Gg, tmp)
 del(tmp)  
 
+alldPlane = []
+if removePlane:
+    for ii in range(alld.shape[0]):
+        G  = np.array([np.ones((len(X.flatten()),)), X.flatten(), Y.flatten()]).T
+        Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
+        mod   = np.dot(Gg,alld[ii,:])
+        synth = mod[0] + mod[1] * X.flatten() + mod[2] * Y.flatten()
+        alldPlane.append(alld[ii,:] - synth)  
+    
+    alldPlane = np.asarray(alldPlane,dtype= np.float32)     
+    del(alld)
+    alld = alldPlane
+    
+alld = np.reshape(alld,(len(params['dates']),nyl,nxl))  
+
+# First, design the Buterworth filter
+N  = 5    # Filter order
+''' Wn is the Cutoff frequency between 0 and 1.  0 is infinitely smooth and 1 is the original. 
+    this is the frequency multiplied by the nyquist rate. 
+    if we have 25 samples per year, then the nyquist rate would be ~12hz. So if we make Wn=.5
+    we will have filtered to 6hz (letting signals with wavelengths of 2 months or longer).
+    If we make wn=1/12 then we will filter to 1hz (letting only signals with wavelengths of 1 year).
+'''
+dec_year = np.asarray(dec_year)
+samplesPerYear = len(dn) / (dec_year.max()-dec_year.min())
+nyquistRate = samplesPerYear/2 #this is the highest freq we can resolve with our sampling rate
+desiredPeriod = 1 # signals with a period of 1 year or longer
+Wn = 1/(desiredPeriod * nyquistRate)
+B, A = signal.butter(N, Wn, output='ba')
+
+alld_filt = signal.filtfilt(B,A, alld,axis=0)
+alld_filt[alld_filt==0]=np.nan
+alld[alld==0]=np.nan
 
 plt.figure()
-for ii in np.arange(0,len(alld[:,0]),4):
-    plt.plot(np.reshape(alld[ii,:],(nyl,nxl))[:,560]) 
+plt.plot(dec_year,alld[:, 215,215],'.')
+plt.plot(dec_year,alld_filt[:, 215,215])
+plt.title('Example time series and filtered time series for stdimg estimation')
 
-# MASKING______________________________
-gam = np.load('gam.npy')[params['ymin']:params['ymax'],:]
-gamflat = gam.flatten()
+std_img = np.nanstd(alld_filt,axis=0) # Temporal std
+std_img = np.reshape(std_img,(nyl,nxl))
+std_img[std_img==0]=np.nan
 
+std_thresh = np.nanmedian(std_img)
+gamma0_thresh =  np.nanmedian(gamFlat)
 
-#
-## Filter each date before calculating the std for referencing.
-#def butter_lowpass(cutoff, fs, order=5):
-#    nyq = 0.5 * fs
-#    normal_cutoff = cutoff / nyq
-#    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-#    return b, a
-#
-#def butter_lowpass_filter(data, cutoff, fs, order=5):
-#    b, a = butter_lowpass(cutoff, fs, order=order)
-#    y = lfilter(b, a, data, axis=1) #Check this axis!
-#    return y
-#
-#order = 8
-#fs = 0.066      # sample rate, Hz
-#cutoff = 1/180  # desired cutoff frequency of the filter, Hz
-#alld_filt = butter_lowpass_filter(alld, cutoff, fs, order) # check the function for the axis in lfilter
-#alld_filt[alld_filt==0]==np.nan
-#alld[alld==0]==np.nan
-#std_img = np.nanstd(alld_filt,axis=0) # Temporal std
-#std_img = np.reshape(std_img,(nyl,nxl))
-#std_img[std_img==0]=np.nan
-#
-#plt.figure()
-#plt.hist(std_img[~np.isnan(std_img)], 40, edgecolor='black', linewidth=.2)
-    
-
-#plt.figure()
-#plt.hist( gamma0_lk.flatten()[~np.isnan(gamma0_lk.flatten())], 40, edgecolor='black', linewidth=.2)
-#plt.title('Phase stability histogram')
-#plt.xlabel('Phase stability (1 is good, 0 is bad)')
-#msk = np.where( (std_img.flatten() < std_thresh) & (gamma0_lk.flatten() > gamma0_thresh) & (hgt.flatten() > -100) )
-#alld[:,msk] = np.nan
+fig,ax = plt.subplots(2,1)
+ax[0].hist(std_img[~np.isnan(std_img)], 40, edgecolor='black', linewidth=.2)
+ax[0].axvline(std_thresh,color='red')
+ax[0].set_title('Non Deforming Region Metric')
+ax[0].set_xlabel('Large values may be deforming')    
+ax[1].hist( gamFlat[~np.isnan(gamFlat)], 40, edgecolor='black', linewidth=.2)
+ax[1].axvline(gamma0_thresh,color='red')
+ax[1].set_title('Phase stability histogram')
+ax[1].set_xlabel('Phase stability (1 is good, 0 is bad)')
+msk = np.zeros(gamFlat.shape)
 
 
-# Remove mean from each image using just the nondeforming pixels
+
+msk[np.where( (std_img.flatten() < std_thresh) & (gamFlat > gamma0_thresh) & (hgt_ifg.flatten() > seaLevel) & (hgt_ifg.flatten() < maxElev))] = 1
+msk = np.reshape(msk,std_img.shape)
+plt.figure();plt.imshow(msk);plt.title('Mask')
+
+  
 alld_flat=np.empty(alld.shape)
 for ii in np.arange(0,len(alld[:,0])):
-    a = alld[ii,:]
-    alld_flat[ii,:] = alld[ii,:] - np.nanmedian(a[gamflat>.3])
-#    alld_flat[ii,np.where(hgt.flatten()==-1)]=np.nan
+    a = alld[ii,:,:]
+    alld_flat[ii,:,:] = alld[ii,:,:] - np.nanmedian(a[msk==1])
+
+varMap = np.var(alld,axis=0)  
+varMapFlat = np.var(alld_flat,axis=0)
+
+fig,ax = plt.subplots(2,1)
+ax[0].imshow(varMap,vmin=2,vmax=25)
+ax[1].imshow(varMapFlat,vmin=2,vmax=25)
+
+  
+columnProf = 1250 # plt a profile along this column. 40 goes through part of MX city
 plt.figure()
-for ii in np.arange(0,len(alld[:,0]),5):
-    plt.plot(np.reshape(alld_flat[ii,:],(nyl,nxl))[:,560])
+for ii in np.arange(0,len(alld[:,0]),1):
+    plt.plot(np.reshape(alld[ii,:],(nyl,nxl))[:,columnProf]) 
+    plt.title('not flattened')
+
+plt.figure()
+for ii in np.arange(0,len(alld[:,0]),1):
+    plt.plot(np.reshape(alld_flat[ii,:],(nyl,nxl))[:,columnProf]) 
+    plt.title('flattened')
+
+data = -alld_flat.astype(np.float32).reshape((nd+1,-1)) # Make subsidence negative
+np.save('alld.npy', data)
+
+rates,resstd = invertRates.invertRates(data,params,params['dn'], seasonals=False,mcov_flag=False,water_elevation=seaLevel)
+np.save('rates.npy',rates)
 
 
-# Plot phase-elevation 
-#plt.figure()
-#plt.plot(hgt.flatten()[msk], alld_flat[30,msk].flatten(),'.',markersize=1)
+rate_dict = {}
+rate_dict['rates'] = rates
+rate_dict['resstd'] = resstd
 
-## Do phase-elevation correction
-#x=hgt.flatten()[msk]
-##x*=crop_mask.flatten()[msk]
-#G = np.vstack([x, np.ones((len(x),1)).flatten()]).T
-#Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
-#alld_flat_topo = np.empty(alld_flat.shape)
-#
-#for ii in np.arange(0,len(alld[:,0])):
-#    y=alld_flat[ii,msk].flatten()
-#    mod    = np.dot(Gg, y)
-#    y2 = mod[0]*hgt.flatten() + mod[1]
-#    alld_flat_topo[ii,:] = alld_flat[ii,:].flatten()-y2
-##    alld_flat[ii,np.where(hgt.flatten()==-1)]=np.nan
-#    
-## Plot example
-#plt.figure()
-#plt.plot(x,y,'.',markersize=1)
-#plt.plot(hgt.flatten(),y2)
-#plt.ylabel('phs')
-#plt.xlabel('elevation (m)')
-#plt.title('uncorrected phase and best fit')
-#plt.savefig(workdir + 'Figs/phs_elev_uncorrected.png',transparent=True,dpi=200)
-#
-#plt.figure()
-#plt.plot(hgt.flatten(),alld_flat_topo[ii,:],'.',markersize=1)
-#plt.ylabel('phs')
-#plt.xlabel('elevation (m)')
-#plt.title('corrected phase')
-#plt.savefig(workdir + 'Figs/phs_elev_corrected.png',transparent=True,dpi=200)
-#
-#
-#s=std_img
-#std_imgs[hgt<.1]=np.nan
-#std_img[gamma0_lk<.2]=np.nan
-#
-#plt.rc('font',size=12)
-#pad=1
-#plt.figure(figsize=(12,12))
-#m = Basemap(epsg=3395, llcrnrlat=lat_bounds.min()-pad,urcrnrlat=lat_bounds.max()+pad,\
-#        llcrnrlon=lon_bounds.min()-pad,urcrnrlon=lon_bounds.max()+pad,resolution='l')
-#m.drawparallels(np.arange(np.floor(lat_bounds.min()-pad), np.ceil(lat_bounds.max()+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-#m.drawmeridians(np.arange(np.floor(lon_bounds.min()-pad), np.ceil(lon_bounds.max()+pad),1), linewidth=0,labels=[1,0,0,1])
-#m.arcgisimage(service='World_Shaded_Relief',xpixels=800)
-#cf = m.pcolormesh(lo,la,std_imgs,vmax=80,shading='flat',latlon=True, zorder=8)
-#cbar = m.colorbar(cf,location='bottom',pad="10%")
-#cbar.set_label('cm')
-#plt.show()
-#plt.savefig(workdir + 'Figs/std_map.png',transparent=True,dpi=200)
-
-#del(alld,alld_filt,Gg,G,std_img,x,y,y2)
-
-data = -alld_flat.astype(np.float32) # Make subsidence negative
-np.save('alld_flat.npy', data)
-
-#data=np.load('alld_flat.npy')
-
-water_elevation=-11
-#rates_seas,seas_amps = invertRates.invertRates(data,params, seasonals=True,mcov_flag=True,water_elevation=water_elevation)
-rates,rate_uncertainty = invertRates.invertRates(data,params, seasonals=False,mcov_flag=True,water_elevation=water_elevation)
-
-#rateSeasDiff = rates_seas - rates
+rates = rate_dict['rates']
+resstd = rate_dict['resstd']
 
 rates = np.asarray(rates,dtype=np.float32)
-np.save('rates.npy', rates)
-np.save('rate_uncertainty.npy', rate_uncertainty)
-#rates = np.load('rates.npy')
-rates[gam<.2]=np.nan
+resstd = np.asarray(resstd,dtype=np.float32)
+
+rates[hgt_ifg<seaLevel] = np.nan
+resstd[hgt_ifg<seaLevel] = np.nan
+
+gamthresh = 0
+rates[gam < gamthresh]=np.nan
+resstd[gam < gamthresh]=np.nan
 
 
+minlat=lat_ifg.min()
+maxlat=lat_ifg.max()
+minlon=lon_ifg.min()
+maxlon=lon_ifg.max()
 
-#fig,ax = plt.subplots(2,2,figsize=(8,5))
-#ax[0,0].imshow(-rates,vmin=-25,vmax=25)
-#ax[0,1].imshow(rate_uncertainty,vmin=0,vmax=25)
-#ax[1,0].imshow(-rates_c,vmin=-25,vmax=25)
-#ax[1,1].imshow(rate_uncertainty_c,vmin=0,vmax=25)
-
-lo = geom['lon_ifg'][params['ymin']:params['ymax'],:]
-la = geom['lat_ifg'][params['ymin']:params['ymax'],:]
-hgt = geom['hgt_ifg'][params['ymin']:params['ymax'],:]
-hgt = np.round(hgt)
-rates[ hgt == -32] = np.nan
-rates[ hgt == -33] = np.nan
-rates[ hgt < -60] = np.nan
-
-rates[hgt < water_elevation] = np.nan
-
-minlat=la[500,500]
-maxlat=la[500,500]
-minlon=lo[500,500]
-maxlon=lo[500,500]
-
-pad=2
 # Plot rate map
+vmin=-2.2
+vmax=2
+pad=.5
 plt.rc('font',size=12)
-plt.figure(figsize=(12,12))
+plt.figure(figsize=(7,9))
 m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
+        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i')
 m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
 m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-m.arcgisimage(service='World_Shaded_Relief',xpixels=2500)
-cf = m.pcolormesh(lo,la,rates,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=-3,vmax=3)
-#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
+m.arcgisimage(service='World_Shaded_Relief',xpixels=1000)
+cf = m.pcolormesh(lon_ifg,lat_ifg,rates,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=vmin,vmax=vmax)
 cbar = m.colorbar(cf,location='bottom',pad="10%")
-cbar.set_label('LOS rate (cm/yr)')
+cbar.set_label('Original LOS rate (cm/yr)')
 plt.show()
 #plt.savefig('Figs/rate_map.png', transparent=True, dpi=500)
 
-## Plot seasonal amplitudes
-#plt.figure(figsize=(12,12))
-#m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-#        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
-#m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-#m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-##m.arcgisimage(service='World_Shaded_Relief',xpixels=2500)
-#cf = m.pcolormesh(lo,la,seas_amps,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=0,vmax=3)
-#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
-#cbar = m.colorbar(cf,location='bottom',pad="10%")
-#cbar.set_label('LOS seasonal amplitude (cm)')
-#plt.show()
-#plt.savefig('Figs/seas_amps_map.png', transparent=True, dpi=500)
 
-## Plot rateSeasDiff
-#plt.figure(figsize=(12,12))
-#m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-#        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
-#m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-#m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-#m.arcgisimage(service='World_Shaded_Relief',xpixels=500)
-#cf = m.pcolormesh(lo,la,rateSeasDiff,shading='flat',latlon=True, cmap=plt.cm.Spectral_r,zorder=8,vmin=-.05,vmax=.05)
-#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
-#cbar = m.colorbar(cf,location='bottom',pad="10%")
-#cbar.set_label('difference between rates estimates seasonal minus linear (cm/yr)')
-##plt.savefig('Figs/rates_uncertainty_map.png', transparent=True, dpi=500)
-#plt.show()
-
-
-# Plot rate uncertainty 95% confidence
-plt.figure(figsize=(12,12))
+# Plot rate std
+plt.rc('font',size=12)
+plt.figure(figsize=(5,9))
 m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
         llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
 m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
 m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
 m.arcgisimage(service='World_Shaded_Relief',xpixels=500)
-cf = m.pcolormesh(lo,la,rate_uncertainty,shading='flat',latlon=True, cmap=plt.cm.Spectral_r,zorder=8,vmin=0,vmax=1)
-m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
+cf = m.pcolormesh(lon_ifg,lat_ifg,resstd,shading='flat',latlon=True,zorder=8,vmin=0,vmax=1)
+#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
 #m.plot(lo_p1,la_p1,color='red',zorder=40,latlon=True)
 cbar = m.colorbar(cf,location='bottom',pad="10%")
-cbar.set_label('95% confidence (cm/yr)')
-#plt.savefig('Figs/rates_uncertainty_map.png', transparent=True, dpi=500)
+cbar.set_label('Seasonal Amps (cm)')
+plt.show()
+
+vmin=.4
+vmax=.9
+pad=.5
+plt.rc('font',size=12)
+plt.figure(figsize=(5,9))
+m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
+        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i')
+m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
+m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
+m.arcgisimage(service='World_Shaded_Relief',xpixels=1000)
+cf = m.pcolormesh(lon_ifg,lat_ifg,gam,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=vmin,vmax=vmax)
+cbar = m.colorbar(cf,location='bottom',pad="10%")
+cbar.set_label('gamma0 phase stability')
 plt.show()
 
 
-## Mask the rates matrix
-#gamma0_lk[np.isnan(gamma0_lk)]=0
-#rates[np.where(gamma0_lk<.2)]=np.nan #masks the low coherence areas
-#rates[np.where( (hgt_ifg<water_elevation) ) ]=np.nan # masks the water
-#rate_uncertainty[np.where(gamma0_lk<.2)]=np.nan #masks the low coherence areas
-#rate_uncertainty[np.where( (hgt_ifg<water_elevation) ) ]=np.nan # masks the water
-#
-# Save rates
-fname = params['tsdir'] + '/rates_flat.unw'
-out = isceobj.createIntImage() # Copy the interferogram image from before
-out.dataType = 'FLOAT'
-out.filename = fname
-out.width = nxl
-out.length = nyl
-out.dump(fname + '.xml') # Write out xml
-rates.tofile(out.filename) # Write file out
-out.renderHdr()
-out.renderVRT()
+#    axrates.scatter(c,r,14,color='white')
+#    axrates.text(c,r,str(ii+1),color='white')
+## Save rates
+#fname = tsdir + '/rates_flat.unw'
+#out = isceobj.createIntImage() # Copy the interferogram image from before
+#out.dataType = 'FLOAT'
+#out.filename = fname
+#out.width = nxl
+#out.length = nyl
+#out.dump(fname + '.xml') # Write out xml
+#rates.tofile(out.filename) # Write file out
+#out.renderHdr()
+#out.renderVRT()
