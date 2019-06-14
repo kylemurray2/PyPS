@@ -11,7 +11,6 @@ Step 1.
 
 Making the time series
 Step 3. 
-Now it's time to do the time series stuff.  
 - Open setup_PyPS.py and change alks and rlks to whatever you want to downlook to
 - run setup_PyPS.py
 This takes a look at all your data and saves a dictionary of parameters with the geometry info, dimensions, time stuff, etc.  It is saved as params.npy and used in all further scripts.
