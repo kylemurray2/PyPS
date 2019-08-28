@@ -164,7 +164,7 @@ for pair in params['pairs']: #loop through each ifg and save to
         
         if filterFlag:
             offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/kdm95/Software/isce2/contrib/stack/topsStack/FilterAndCoherence.py -i ' + of + ' -f ' +  offilt + ' -s ' + filterStrength
+            command = 'python /home/kdm95/Software/isce-2.2.0/contrib/stack/topsStack/FilterAndCoherence.py -i ' + of + ' -f ' +  offilt + ' -s ' + filterStrength
             os.system(command)
             
         if not os.path.isfile(params['intdir'] + '/' + pair + '/cor_lk.r4'):
@@ -216,4 +216,3 @@ for pair in params['pairs']: #loop through each ifg and save to
 #geom['lat_ifg'] = latlk
 #geom['hgt_ifg'] = hgtlk
 #np.save('geom.npy',geom)
-#        

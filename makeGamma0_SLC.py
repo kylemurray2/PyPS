@@ -39,7 +39,7 @@ gausy = np.exp( np.divide( -np.square(np.arange(-ry2,ry2)), np.square(ry)));
 gaus = gausx[:, np.newaxis] * gausy[np.newaxis, :]
 gaus -= gaus.min()
 gaus  /= np.sum(gaus.flatten())
-
+del(rx,ry,rx2,ry2,gausx,gausy)
 # get slc example image (extract from an xml file)
 f = params['slcdir'] +'/'+ dates[0] + '/' + dates[0] + '.slc.full'
 slcImage = isceobj.createSlcImage()
@@ -55,14 +55,14 @@ for ii,d in enumerate(dates[:-1]):
     if not os.path.isfile(params['slcdir'] + '/' + d + '/fine_diff.int') or overwrite:
         start_time=time.time()
         d2 = dates[ii+1]
+
         #save diff ifg
         intImage = intimg.clone() # Copy the interferogram image from before
         intImage.filename = params['slcdir'] + '/' + d + '/fine_diff.int'
         intImage.dump(intImage.filename + '.xml') # Write out xml
         fid=open(intImage.filename,"ab+")
         print('working on ' + d)
-#        end = time.time()
-#        print(end - start)
+
 
         for kk in np.arange(0,nblocks):
             
@@ -123,6 +123,16 @@ plt.figure()
 plt.plot(test)
 
 diffImage = intimg.clone()   
+test = []
+for ii in range(nd):
+    d = dates[ii]
+    diff_file = params['slcdir'] + '/' + d + '/fine_diff.int'
+    diffImage.load(diff_file + '.xml')
+    test.append(diffImage.memMap()[5000,5000,0])
+plt.figure()
+plt.plot(test)
+
+diffImage = intimg.clone()   
 blocks = np.linspace(0,params['ny'],nblocks).astype(int)
 print('Processing gamma0 image in separate blocks.')
 for ii in np.arange(0,len(blocks)-1):
@@ -165,3 +175,4 @@ plt.hist( gamma0.flatten()[~np.isnan(gamma0.flatten())], 40, edgecolor='black', 
 plt.title('Phase stability histogram')
 plt.xlabel('Phase stability (1 is good, 0 is bad)')
 plt.show()
+
