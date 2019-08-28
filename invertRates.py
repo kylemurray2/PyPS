@@ -23,7 +23,7 @@ import fitSine
 #water_elevation = -103
 #********************************
 
-def invertRates(data,params,dn,seasonals=False,mcov_flag=False,water_elevation=-103):
+def invertRates(data,params,dn,seasonals=False,mcov_flag=False,water_elevation=-103,uncertainties=False):
     ''' data is a flattened stack of inverted displacements shape=[nd,(nx*ny)]
         you can invert for a sinusoidal fit at each pixel with seasonals = True
         mcov_flag is the model covariance and works only with seasonals=False for now.
@@ -31,9 +31,7 @@ def invertRates(data,params,dn,seasonals=False,mcov_flag=False,water_elevation=-
 
     nyl = params['ymax'] - params['ymin']
     nxl = params['xmax'] - params['xmin']
-
     lam = params['lam']
-    
     dn0 = dn -dn[0]
     d1=0
     period = 365.25
@@ -46,21 +44,52 @@ def invertRates(data,params,dn,seasonals=False,mcov_flag=False,water_elevation=-
             
         # Invert for seasonal plus long term rates
         phases,amplitudes,biases,slopes = fitSine.fitSine(dn0,data,period)
-        rates = np.reshape(slopes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100*365
+        rates = np.reshape(slopes,(nyl,nxl)).astype(np.float32)*365
         r_nomsk = rates
-        amps = np.reshape(amplitudes,(nyl,nxl)).astype(np.float32)*lam/(4*np.pi)*100
+        amps = np.reshape(amplitudes,(nyl,nxl)).astype(np.float32)
         a_nomsk = amps
 #        plt.figure();plt.imshow(np.flipud(r_nomsk),vmin=-2,vmax=2)
 #        plt.figure();plt.imshow(np.flipud(a_nomsk),vmin=0,vmax=2)
         return rates, amps
+    
+    elif uncertainties:
+        G = np.vstack([dn0, np.ones((len(dn0),1)).flatten()]).T
+        mod = []
+        rates = []
+        resstd = []
+        for ii in range(data.shape[1]):
+            W = np.diag(1/uncertainties[:,ii])
+            Gw = np.dot(W,G)
+            dw = np.dot(W,data[:,ii])
+            mod.append(np.dot( np.linalg.inv(np.dot(Gw.T,Gw)), np.dot(Gw.T,dw)))
+            rates.append( mod[ii][0] *365 ) # cm/yr
+            #offs  = np.reshape(mod[1,:],(nyl, nxl))
+            synth  = np.dot(G,mod[ii]);
+            res    = (data[:,ii]-synth)
+            rs = np.std(res,axis=0)
+            resstd.append(rs)
+        
+        rates = np.reshape(np.asarray(rates),(nyl,nxl))
+        resstd = np.reshape(np.asarray(resstd),(nyl,nxl))
+        
+        return rates,resstd
+
     else:
         G = np.vstack([dn0, np.ones((len(dn0),1)).flatten()]).T
         Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
         mod   = np.dot(Gg, data)
-        rates = np.reshape(mod[0,:],(nyl,nxl))*lam/(4*np.pi)*100*365 # cm/yr
+        rates = np.reshape(mod[0,:],(nyl,nxl))*365 # cm/yr
         #offs  = np.reshape(mod[1,:],(nyl, nxl))
         synth  = np.dot(G,mod);
-        res    = (data-synth)*lam/(4*np.pi)*100 # cm
+        res    = (data-synth)#*lam/(4*np.pi)*100 # cm
+#        worst = []
+#        worstVal = []
+#        for ii in range(nxl*nyl):
+#            worst.append(np.where(res[:,ii]==res[:,ii].max())[0][0])
+#            worstVal.append(res[:,ii].max())
+#        worst = np.reshape( np.asarray(worst,dtype=np.float32) ,(nyl,nxl))
+#        worstVal = np.reshape( np.asarray(worstVal,dtype=np.float32) ,(nyl,nxl))
+
         resstd = np.std(res,axis=0)
         resstd = np.reshape(resstd,(nyl, nxl))
         
@@ -71,9 +100,9 @@ def invertRates(data,params,dn,seasonals=False,mcov_flag=False,water_elevation=-
                 rate_uncertainty.append(1.96*mcov[0]**.5)
             rate_uncertainty = np.asarray(rate_uncertainty,dtype=np.float32)
             rate_uncertainty = np.reshape(rate_uncertainty,(nyl,nxl))
-            rate_uncertainty= rate_uncertainty*lam/(4*np.pi)*100*365 #cm/yr
+            rate_uncertainty= rate_uncertainty*365 #cm/yr
 
-        return rates,resstd
+        return rates,resstd#,worst,worstVal
 
 #
 #
