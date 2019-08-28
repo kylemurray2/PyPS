@@ -91,12 +91,21 @@ for pair in params['pairs']: #loop through each ifg and save to
         #Open a file to save stuff to
         out = isceobj.createImage() # Copy the interferogram image from before
         out.dataType = 'CFLOAT'
-        of = params['intdir'] + '/' + pair + '/fine_lk.int'
-        out.filename = of
+        out.filename = params['intdir'] + '/' + pair + '/fine_lk.int'
         out.width = params['nxl']
         out.length = params['nyl']
-        out.dump(of + '.xml') # Write out xml
-        fid=open(of,"ab+")
+        out.dump(out.filename + '.xml') # Write out xml
+        fid=open(out.filename,"ab+")
+        
+        # open a cor file too
+        outc = isceobj.createImage() # Copy the interferogram image from before
+        outc.dataType = 'FLOAT'
+        outc.filename = params['intdir'] + '/' + pair + '/cor_lk.r4'
+        outc.width = params['nxl']
+        outc.length = params['nyl']
+        outc.dump(outc.filename + '.xml') # Write out xml
+        fidc=open(outc.filename,"ab+")
+        
         # break it into 20 blocks
         for kk in np.arange(0,nblocks):
             print(str(kk))
@@ -158,32 +167,28 @@ for pair in params['pairs']: #loop through each ifg and save to
     
 #            cpx.tofile(of) # Write file out
             fid.write(cpx)
-        out.renderHdr()
-        out.renderVRT() 
-        fid.close()
-        
-        if filterFlag:
-            offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/kdm95/Software/isce-2.2.0/contrib/stack/topsStack/FilterAndCoherence.py -i ' + of + ' -f ' +  offilt + ' -s ' + filterStrength
-            os.system(command)
             
-        if not os.path.isfile(params['intdir'] + '/' + pair + '/cor_lk.r4'):
+            
             cor_lk = np.log(  np.abs(  (rea_lk+(1j*ima_lk)).astype(np.complex64)) )
             cor_lk /= cor_lk[~np.isnan(cor_lk)].max()
             cor_lk[np.isinf(cor_lk)] = 0
             cor_lk[np.isnan(cor_lk)] = 0
             cor_lk[geom['hgt_ifg'] < seaLevel] = 0
+            fidc.write(cor_lk)
+        
+        out.renderHdr()
+        out.renderVRT()  
+        outc.renderHdr()
+        outc.renderVRT() 
+        fid.close()
+        fidc.close()
+
+        if filterFlag:
+            offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
+            command = 'python /home/kdm95/Software/isce-2.2.0/contrib/stack/topsStack/FilterAndCoherence.py -i ' + out.filename + ' -f ' +  offilt + ' -s ' + filterStrength
+            os.system(command)
             
-            out = isceobj.createImage() # Copy the interferogram image from before
-            out.dataType = 'FLOAT'
-            out.filename = params['intdir'] + '/' + pair + '/cor_lk.r4'
-            out.width = params['nxl']
-            out.length = params['nyl']
-            out.dump(params['intdir'] + '/' + pair + '/cor_lk.r4.xml') # Write out xml
-            cor_lk.tofile(params['intdir'] + '/' + pair + '/cor_lk.r4') # Write file out
             
-            out.renderHdr()
-            out.renderVRT()  
 
 # Downlook geom files this way too
 
