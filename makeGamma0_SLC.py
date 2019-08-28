@@ -36,7 +36,7 @@ gausy = np.exp( np.divide( -np.square(np.arange(-ry2,ry2)), np.square(ry)));
 gaus = gausx[:, np.newaxis] * gausy[np.newaxis, :]
 gaus -= gaus.min()
 gaus  /= np.sum(gaus.flatten())
-
+del(rx,ry,rx2,ry2,gausx,gausy)
 # get slc example image (extract from an xml file)
 f = params['slcdir'] +'/'+ dates[0] + '/' + dates[0] + '.slc.full'
 slcImage = isceobj.createSlcImage()
@@ -62,31 +62,43 @@ for ii,d in enumerate(dates[:-1]):
         slc2 = slcImage.memMap()[:,:,0]
         ifg = np.multiply(slc1,np.conj(slc2))
         del(slc1,slc2)
-        ifg_real = np.real(ifg)
-        ifg_imag = np.imag(ifg)
-        del(ifg)
-#        ifg_real[np.where(ifg_real==0)] = np.nan
-#        ifg_imag[np.where(ifg_real==0)] = np.nan
+
         #filter real and imaginary parts    
-        ifg_real_filt = cv2.filter2D(ifg_real,-1, gaus)
-        ifg_imag_filt = cv2.filter2D(ifg_imag,-1, gaus)  
+        ifg_real_filt = cv2.filter2D(np.real(ifg),-1, gaus)
+        ifg_imag_filt = cv2.filter2D(np.imag(ifg),-1, gaus)  
 #        phs_filt = np.arctan2(ifg_imag_filt, ifg_real_filt).astype(np.float32)
-        
-        # Difference them 
-        cpx0    = ifg_real      + 1j * ifg_imag
-        del(ifg_real,ifg_imag)
-        cpxf    = ifg_real_filt + 1j * ifg_imag_filt
+        cpxf    = ifg_real_filt + np.multiply(1j, ifg_imag_filt,dtype=np.complex64)
         del(ifg_real_filt,ifg_imag_filt)
+    
+        # Difference them 
+        cpx0    = np.real(ifg)      + 1j * np.imag(ifg)
+        del(ifg)
+        
+        # Save a and b files to save memory and do imagemath.py on a and b   
         cpx0   /= abs(cpx0)
-        cpxf   /= abs(cpxf)
-        phsdiff = np.multiply(cpx0, np.conj(cpxf))
-        del(cpxf,cpx0)
-        #save diff ifg
         intImage = intimg.clone() # Copy the interferogram image from before
-        intImage.filename = params['slcdir'] + '/' + d + '/fine_diff.int'
-        intImage.dump(params['slcdir']  + '/' + d + '/fine_diff.int.xml') # Write out xml
-        phsdiff.tofile(params['slcdir'] + '/' + d + '/fine_diff.int') # Write file out
-        del(phsdiff)
+        intImage.filename = params['slcdir'] + '/' + d + '/a.int'
+        intImage.dump(intImage.filename + '.xml') # Write out xml
+        cpx0.tofile(intImage.filename) # Write file out
+        del(cpx0)
+
+        aname = params['slcdir'] + '/' + d + '/a.int'
+        bname = params['slcdir'] + '/' + d + '/b.int'
+        oname = params['slcdir'] + '/' + d + '/fine_diff.int'
+        os.system("imageMath.py -e='a*conj(b)' -t cfloat -o " + oname + " --a=" + aname + " --b=" + bname)
+        
+        # Remove the a and b files
+        os.system('rm ' + aname)
+        os.system('rm ' + bname)
+          
+#        phsdiff = np.multiply(cpx0, np.conj(cpxf),dtype=np.complex64)
+#        del(cpxf,cpx0)
+#        #save diff ifg
+#        intImage = intimg.clone() # Copy the interferogram image from before
+#        intImage.filename = params['slcdir'] + '/' + d + '/fine_diff.int'
+#        intImage.dump(params['slcdir']  + '/' + d + '/fine_diff.int.xml') # Write out xml
+#        phsdiff.tofile(params['slcdir'] + '/' + d + '/fine_diff.int') # Write file out
+#        del(phsdiff)
     else:
         print(d + ' already exists.')
 #mad = lambda x: np.sqrt(np.nanmedian(abs(x - np.nanmedian(x,axis=0))**2),axis=0d)
@@ -95,7 +107,7 @@ for ii,d in enumerate(dates[:-1]):
 gamma0 =np.zeros((ny,nx)).astype(np.float32)
 # Make a stack of the diff images (memory mapped )
 # We have to do this in 20 subsections to save on memory
-nblocks = 60
+nblocks = 80
 
 
 diffImage = intimg.clone()   
