@@ -19,9 +19,9 @@ import cv2
 import os
 
 filterFlag = True
-filterStrength = '0.6'
+filterStrength = '0.2'
 
-nblocks = 40
+nblocks = 6
 
 #from mroipac.filter.Filter import Filter
 params = np.load('params.npy',allow_pickle=True).item()
@@ -173,7 +173,7 @@ for pair in params['pairs']: #loop through each ifg and save to
             cor_lk /= cor_lk[~np.isnan(cor_lk)].max()
             cor_lk[np.isinf(cor_lk)] = 0
             cor_lk[np.isnan(cor_lk)] = 0
-            cor_lk[geom['hgt_ifg'] < seaLevel] = 0
+#            cor_lk[geom['hgt_ifg'] < seaLevel] = 0
             fidc.write(cor_lk)
         
         out.renderHdr()
@@ -185,7 +185,7 @@ for pair in params['pairs']: #loop through each ifg and save to
 
         if filterFlag:
             offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/kdm95/Software/isce-2.2.0/contrib/stack/topsStack/FilterAndCoherence.py -i ' + out.filename + ' -f ' +  offilt + ' -s ' + filterStrength
+            command = 'python /home/kdm95/Software/isce2/contrib/stack/topsStack/FilterAndCoherence.py -i ' + out.filename + ' -f ' +  offilt + ' -s ' + filterStrength
             os.system(command)
             
             
