@@ -30,8 +30,8 @@ alks = int(4) # number of looks in azimuth
 rlks = int(4) # number of looks in range
 seaLevel = -200
 #1x4 looks
-nx = 4781
-ny = 8333 
+nx = 4950
+ny = 6601 
 
 ifg_mode = False
 nxl = int(np.floor(nx/rlks))
@@ -66,6 +66,7 @@ if not os.path.isdir(workdir + '/Figs'):
     os.mkdir(workdir + '/Figs')
 
 llhFile = glob.glob(mergeddir + '/geom_master/*.llh')[0]
+lkvFile = glob.glob(mergeddir + '/geom_master/*.lkv')[0]
 
 slcFileList = glob.glob(slcdir + '/*.slc')
 
@@ -113,6 +114,20 @@ for ii,d in enumerate(dates):
 
 # Get geom info
 llh = np.fromfile(llhFile,dtype=np.float32)
+lkv = np.fromfile(lkvFile,dtype=np.float32)
+
+lids = np.arange(0,len(lkv),3)
+kids = np.arange(1,len(lkv),3)
+vids = np.arange(2,len(lkv),3)
+l = lkv[lids].reshape(ny,nx)
+k = lkv[kids].reshape(ny,nx)
+v = lkv[vids].reshape(ny,nx)
+
+plt.figure();plt.imshow(l)
+plt.figure();plt.imshow(k)
+plt.figure();plt.imshow(v)
+
+
 laIds = np.arange(0,len(llh),3)
 loIds = np.arange(1,len(llh),3)
 hgIds = np.arange(2,len(llh),3)
@@ -153,6 +168,32 @@ im.dump(im.filename + '.xml') # Write out xml
 hgt_ifg.tofile(im.filename) # Write file out
 im.finalizeImage()
 
+im = isceobj.createImage()# Copy the interferogram image from before
+im.filename = mergeddir + '/geom_master/losE.rdr.full'
+im.width = nx
+im.length = ny
+im.dataType = 'FLOAT'
+im.dump(im.filename + '.xml') # Write out xml
+l.tofile(im.filename) # Write file out
+im.finalizeImage()
+
+im = isceobj.createImage()# Copy the interferogram image from before
+im.filename = mergeddir + '/geom_master/losN.rdr.full'
+im.width = nx
+im.length = ny
+im.dataType = 'FLOAT'
+im.dump(im.filename + '.xml') # Write out xml
+k.tofile(im.filename) # Write file out
+im.finalizeImage()
+
+im = isceobj.createImage()# Copy the interferogram image from before
+im.filename = mergeddir + '/geom_master/losU.rdr.full'
+im.width = nx
+im.length = ny
+im.dataType = 'FLOAT'
+im.dump(im.filename + '.xml') # Write out xml
+v.tofile(im.filename) # Write file out
+im.finalizeImage()
 
 # Downlook geom files
 def downLook(infile, outfile,alks,rlks):
@@ -167,7 +208,7 @@ def downLook(infile, outfile,alks,rlks):
     lkObj.setOutputFilename(outfile)
     lkObj.looks()
 
-file_list = list(['lat','lon','hgt'])#,'incLocal','shadowMask'])
+file_list = list(['lat','lon','hgt','losE','losN','losU'])#,'incLocal','shadowMask'])
 for f in file_list:
     infile = mergeddir + '/geom_master/' + f + '.rdr.full'
     outfile = mergeddir + '/geom_master/' + f + '_lk.rdr'
@@ -178,6 +219,10 @@ for f in file_list:
 f_lon_lk = mergeddir + '/geom_master/lon_lk.rdr'
 f_lat_lk = mergeddir + '/geom_master/lat_lk.rdr'
 f_hgt_lk = mergeddir + '/geom_master/hgt_lk.rdr'
+f_losE_lk = mergeddir + '/geom_master/losE_lk.rdr'
+f_losN_lk = mergeddir + '/geom_master/losN_lk.rdr'
+f_losU_lk = mergeddir + '/geom_master/losU_lk.rdr'
+
 
 Image = isceobj.createImage()
 Image.load(f_lon_lk + '.xml')
@@ -200,10 +245,35 @@ hgt_ifg = hgt_ifg.copy().astype(np.float32)
 hgt_ifg[hgt_ifg==0]=np.nan
 Image.finalizeImage()
 
+Image = isceobj.createImage()
+Image.load(f_losE_lk + '.xml')
+losE_ifg = Image.memMap()[:,:,0]
+losE_ifg = losE_ifg.copy().astype(np.float32)
+losE_ifg[losE_ifg==0]=np.nan
+Image.finalizeImage()
+
+Image = isceobj.createImage()
+Image.load(f_losN_lk + '.xml')
+losN_ifg = Image.memMap()[:,:,0]
+losN_ifg = losN_ifg.copy().astype(np.float32)
+losN_ifg[losN_ifg==0]=np.nan
+Image.finalizeImage()
+
+Image = isceobj.createImage()
+Image.load(f_losU_lk + '.xml')
+losU_ifg = Image.memMap()[:,:,0]
+losU_ifg = losU_ifg.copy().astype(np.float32)
+losU_ifg[losU_ifg==0]=np.nan
+Image.finalizeImage()
+
 geom = {}
 geom['lon_ifg'] = lon_ifg
 geom['lat_ifg'] = lat_ifg
 geom['hgt_ifg'] = hgt_ifg
+geom['losE_ifg'] = losE_ifg
+geom['losN_ifg'] = losN_ifg
+geom['losU_ifg'] = losU_ifg
+
 np.save('geom.npy',geom)
 
 for l in np.arange(0,nyl):
@@ -231,7 +301,7 @@ lon_bounds = np.array([ul[0],ur[0],ur[0],lr[0],lr[0],ll[0],ll[0],ul[0]])
 lat_bounds = np.array([ul[1],ur[1],ur[1],lr[1],lr[1],ll[1],ll[1],ul[1]])
 
 
-pad=2
+pad=.5
 plt.close()
 plt.rc('font',size=14)
 fig = plt.figure(figsize=(6,6))
