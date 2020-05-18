@@ -128,7 +128,7 @@ for ii in range(nd):
     d = dates[ii]
     diff_file = params['slcdir'] + '/' + d + '/fine_diff.int'
     diffImage.load(diff_file + '.xml')
-    test.append(diffImage.memMap()[5000,5000,0])
+    test.append(diffImage.memMap()[2000,2000,0])
 plt.figure()
 plt.plot(test)
 
