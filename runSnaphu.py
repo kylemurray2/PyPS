@@ -15,8 +15,7 @@ locals().update(params)
 
 nproc='20'
 ntilerow='6'
-ntilecol='10'
-
+ntilecol='6'
 gamma0_file = params['tsdir'] + '/gamma0_lk.int'
 pair=params['pairs'][0]
 
