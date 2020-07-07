@@ -23,7 +23,7 @@ workdir = os.getcwd() # Use current directory as working directory
  # working directory (should be where merged is)
 skip = 1
 alks = int(3) # number of looks in azimuth
-rlks = int(12) # number of looks in range
+rlks = int(8) # number of looks in range
 seaLevel = -200
 ifg_mode = False
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><

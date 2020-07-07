@@ -9,20 +9,22 @@ run snaphu
 import numpy as np
 import isceobj
 import os
+import glob
 
-params = np.load('params.npy').item()
+params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 
+geocode = True
 nproc='20'
-ntilerow='6'
-ntilecol='6'
+ntilerow='4'
+ntilecol='4'
 gamma0_file = params['tsdir'] + '/gamma0_lk.int'
 pair=params['pairs'][0]
 
 for pair in params['pairs']:
-    infile = params['intdir']+ '/' + pair+'/fine_lk_filt.int'
+    infile = params['intdir']+ '/' + pair+'/filt.int'
     corfile = params['intdir']+ '/' + pair+'/cor_lk.r4'
-    outfile = params['intdir']+ '/' + pair+'/fine_lk.unw'
+    outfile = params['intdir']+ '/' + pair+'/filt.unw'
     if not os.path.isfile(outfile):
         print('unwrapping ' + pair)
         # The command line way doesn't work right now, so we'll use the config file
@@ -79,3 +81,18 @@ for pair in params['pairs']:
         print(outfile + ' already exists.')
 
 
+if geocode==True:
+    setupParams = np.load('setupParams.npy',allow_pickle=True).item()
+    DEM = setupParams['DEM']
+    bounds = setupParams['bounds']
+    mstr = workdir + '/master'
+    
+    for pair in pairs:
+        file = intdir + '/' + pair + '/filt.unw'
+        if pair==pairs[0]:
+            pwn=mstr
+        else:
+            pwn = workdir
+        
+        command = 'geocodeIsce.py -a ' + str(alks) + ' -r ' +str(rlks) + ' -d ' + DEM + ' -m ' + mstr + ' -f ' +file + ' -b '  + bounds + ' -s ' + mstr
+        os.system(command)

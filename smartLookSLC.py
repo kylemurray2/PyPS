@@ -18,10 +18,10 @@ from mpl_toolkits.basemap import Basemap
 import cv2
 import os
 
-filterFlag = True
-filterStrength = '0.2'
+filterFlag = False
+filterStrength = '0.1'
 
-nblocks = 6
+nblocks = 1
 
 #from mroipac.filter.Filter import Filter
 params = np.load('params.npy',allow_pickle=True).item()
@@ -52,6 +52,11 @@ intImage = isceobj.createIntImage()
 intImage.load(f + '.xml')
 gamma0= intImage.memMap()[:,:,0] 
 
+gamma0=gamma0.copy() # mmap is readonly, so we need to copy it.
+
+
+
+
 if not os.path.isfile('gam.npy'):
     # Perform smart_looks first on gamma0
     gam=gamma0.copy() # mmap is readonly, so we need to copy it.
@@ -74,6 +79,8 @@ if not os.path.isfile('gam.npy'):
     del(gam)
 else: 
     print('gam.npy already exists')
+
+
 
 if not os.path.isdir(params['intdir']):
     os.system('mkdir ' + params['intdir'])
@@ -106,7 +113,7 @@ for pair in params['pairs']: #loop through each ifg and save to
         outc.dump(outc.filename + '.xml') # Write out xml
         fidc=open(outc.filename,"ab+")
         
-        # break it into 20 blocks
+        # break it into blocks
         for kk in np.arange(0,nblocks):
             print(str(kk))
             idy = int(np.floor(ny/nblocks))
