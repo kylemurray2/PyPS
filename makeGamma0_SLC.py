@@ -154,9 +154,9 @@ for ii in np.arange(0,len(blocks)-1):
 plt.imshow(gamma0)
 
 
-gamma0 = 1-gamma0
-gamma0 += abs( gamma0[~np.isnan(gamma0)].min())
-gamma0 /= gamma0[~np.isnan(gamma0)].max()
+gamma0 = gamma0[~np.isnan(gamma0)].max()-gamma0
+# gamma0 += abs( gamma0[~np.isnan(gamma0)].min())
+# gamma0 /= gamma0[~np.isnan(gamma0)].max()
 
 out = isceobj.createImage()
 out.filename = params['tsdir'] + '/gamma0.int'
