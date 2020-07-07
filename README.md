@@ -5,9 +5,8 @@ When using these scripts please cite:
 Murray, K. D., & Lohman, R. B. (2018). Short-lived pause in Central California subsidence after heavy winter precipitation of 2017. Science Advances, 4(8), eaar8144.
 
 Step 1. 
-- Get the data from ASF
-- Process to make coregistered SLCs.. I use the stack processor from ISCE
-- In working directory you need a merged/SLC and merged/geom_master directory
+
+- In working directory you need a merged/SLC and merged/geom_master directory containing the relevant data
 
 Making the time series
 Step 3. 
