@@ -244,48 +244,11 @@ def hgtClust(phs_ifg,msk_ifg,msk,lon_ifg,lat_ifg,hgt_ifg,minlon,maxlon,minlat,ma
         vmax = 12
         c = plt.cm.viridis
         pad=0
-        ax = fig.add_subplot(131)
-        ax.set_title("Original IFG")
-        m = Basemap(projection='merc',\
-                llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-                llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
-        m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
-        m.drawstates(linewidth=1.5,zorder=1,color='white')
-        m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-        m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
-        cf = m.pcolormesh(lon_ifg,lat_ifg,pm-np.nanmedian(pm),vmin=vmin,vmax=vmax,latlon=True,zorder=3,rasterized=True)
-        cbar = m.colorbar(cf,location='bottom',pad="10%")
-        cbar.set_label('cm')    
-        
-        ax = fig.add_subplot(132)
         hgt_m[hgt_ifg<minhgt]=np.nan
-#        hgt_m[msk_ifg==0]=np.nan
-        ax.set_title("Uniform model")
-        m = Basemap(projection='merc',\
-                llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-                llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
-        m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
-        m.drawstates(linewidth=1.5,zorder=1,color='white')
-        m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[0,0,0,0])  # set linwidth to zero so there is no grid
-        m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
-        cf = m.pcolormesh(lon_ifg,lat_ifg,hm-np.nanmedian(hm),shading='flat',vmin=vmin,vmax=vmax,latlon=True,zorder=3,rasterized=True)
-        cbar = m.colorbar(cf,location='bottom',pad="10%")
-        cbar.set_label('cm')     
-        
-        ax = fig.add_subplot(133)
         phs_c[hgt_ifg<0]=np.nan
-#        phs_c[msk_ifg==0]=np.nan
-        ax.set_title("Corrected phase")
-        m = Basemap(projection='merc',\
-                llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-                llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
-        m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
-        m.drawstates(linewidth=1.5,zorder=1,color='white')
-        m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[0,0,0,0])  # set linwidth to zero so there is no grid
-        m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
-        cf = m.pcolormesh(lon_ifg,lat_ifg,pcm-np.nanmedian(pcm),shading='flat',vmin=vmin,vmax=vmax,cmap=c,latlon=True,zorder=3,rasterized=True)
-        cbar = m.colorbar(cf,location='bottom',pad="10%")
-        cbar.set_label('cm')     
+        
+        # MAKE MAP
+        mapImg3(pm-np.nanmedian(pm),hm-np.nanmedian(hm),pcm-np.nanmedian(pcm), lons, lats, vmin, vmax, pad, "Original IFG","Uniform model","Corrected phase")
         
         if doPowerLaw:
             plt.savefig('PhaseElevation/Figures/Uniform_correctionmaps_PL_' + str(nk) + 'K' + pair + '.svg')

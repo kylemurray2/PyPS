@@ -8,9 +8,9 @@ Created on Mon Aug 13 12:35:54 2018
 import numpy as np
 import isceobj
 from matplotlib import pyplot as plt
-from mpl_toolkits.basemap import Basemap
 import invertRates 
 import scipy.signal as signal
+import makeMap
 
 params = np.load('params.npy',allow_pickle=True).item()
 geom = np.load('geom.npy',allow_pickle=True).item()
@@ -197,49 +197,12 @@ maxlon=lon_ifg.max()
 vmin=-2.2
 vmax=2
 pad=.5
-plt.rc('font',size=12)
-plt.figure(figsize=(7,9))
-m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i')
-m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-m.arcgisimage(service='World_Shaded_Relief',xpixels=1000)
-cf = m.pcolormesh(lon_ifg,lat_ifg,rates,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=vmin,vmax=vmax)
-cbar = m.colorbar(cf,location='bottom',pad="10%")
-cbar.set_label('Original LOS rate (cm/yr)')
-plt.show()
-#plt.savefig('Figs/rate_map.png', transparent=True, dpi=500)
 
 
-# Plot rate std
-plt.rc('font',size=12)
-plt.figure(figsize=(5,9))
-m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='l')
-m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-m.arcgisimage(service='World_Shaded_Relief',xpixels=500)
-cf = m.pcolormesh(lon_ifg,lat_ifg,resstd,shading='flat',latlon=True,zorder=8,vmin=0,vmax=1)
-#m.readshapefile('/data/kdm95/qfaults/qfaults_la', 'qfaults_la',zorder=30)
-#m.plot(lo_p1,la_p1,color='red',zorder=40,latlon=True)
-cbar = m.colorbar(cf,location='bottom',pad="10%")
-cbar.set_label('Seasonal Amps (cm)')
-plt.show()
 
-vmin=.4
-vmax=.9
-pad=.5
-plt.rc('font',size=12)
-plt.figure(figsize=(5,9))
-m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-        llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i')
-m.drawparallels(np.arange(np.floor(minlat-pad), np.ceil(maxlat+pad), 1), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-m.drawmeridians(np.arange(np.floor(minlon-pad), np.ceil(maxlon+pad),1), linewidth=0,labels=[1,0,0,1])
-m.arcgisimage(service='World_Shaded_Relief',xpixels=1000)
-cf = m.pcolormesh(lon_ifg,lat_ifg,gam,latlon=True, cmap=plt.cm.Spectral_r, zorder=8,vmin=vmin,vmax=vmax)
-cbar = m.colorbar(cf,location='bottom',pad="10%")
-cbar.set_label('gamma0 phase stability')
-plt.show()
+makeMap.makeImg(rates,lon_ifg,lat_ifg,vmin,vmax,pad,'rates (cm)')
+makeMap.makeImg(resstd,lon_ifg,lat_ifg,0,8,pad, 'res std (cm)')
+makeMap.makeImg(gam,lon_ifg,lat_ifg,.4,.9,pad,'gamma0')
 
 
 #    axrates.scatter(c,r,14,color='white')

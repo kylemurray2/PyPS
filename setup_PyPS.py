@@ -12,21 +12,23 @@ import os
 from datetime import date
 import isceobj
 import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap
+import makeMap
 from mroipac.looks.Looks import Looks
 
 #<><><><><><><><><><><><>Set these variables><><><><><><><><><><><><><><><
 # Define area of interest
 #bbox = list([35.8, 36.9, -120.3, -118.7]) #minlat,maxlat,minlon,maxlon
 #maxlat = bbox[0]; minlat = bbox[1]; minlon = bbox[2]; maxlon = bbox[3]
-workdir = os.getcwd() # Use current directory as working directory
- # working directory (should be where merged is)
-skip = 1
-alks = int(3) # number of looks in azimuth
-rlks = int(8) # number of looks in range
-seaLevel = -200
-ifg_mode = False
+# workdir = os.getcwd() # Use current directory as working directory
+#  # working directory (should be where merged is)
+# skip = 1
+# alks = int(3) # number of looks in azimuth
+# rlks = int(8) # number of looks in range
+# seaLevel = -200
+# ifg_mode = False
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+import localParams
+workdir, skip, alks, rlks, seaLevel, ifg_mode,crop,cropymin,cropymax,cropxmin,cropxmax = localParams.getLocalParams()
 
 
 lam = 0.056 # 0.056 for c-band
@@ -98,10 +100,52 @@ f_lon = mergeddir + '/geom_master/lon.rdr.full.vrt'
 f_lon = mergeddir + '/geom_master/lon.rdr.full'
 gImage = isceobj.createIntImage()
 gImage.load(f_lon + '.xml')
-ny = gImage.length
-nx = gImage.width
-nxl = int(np.floor(nx/rlks))
-nyl = int(np.floor(ny/alks))
+
+if crop:
+    ny = cropymax-cropymin
+    nx = cropxmax-cropxmin
+else:
+    ny = gImage.length
+    nx = gImage.width
+
+if crop:
+    for d in dates:
+        f = slcdir +'/'+ d + '/' + d + '.slc.full'
+        if not os.path.isfile(f + '.crop'):
+
+    #        os.system('fixImageXml.py -i ' + f + ' -f')
+            slcImage = isceobj.createSlcImage()
+            slcImage.load(f + '.xml')
+            slc1 = slcImage.memMap()[cropymin:cropymax,cropxmin:cropxmax,0]
+            
+            slcImagec = isceobj.createSlcImage()
+            
+            slcImagec.filename = f+'.crop'
+            slcImagec.width =cropxmax-cropxmin
+            slcImagec.length =cropymax-cropymin
+            slcImagec.dump(slcImagec.filename + '.xml') # Write out xml
+            
+            slc1.tofile(slcImagec.filename) # Write file out
+            slcImagec.finalizeImage()
+
+file_list = list(['lat','lon','hgt'])#,'incLocal','shadowMask'])
+
+if crop:
+    for f in file_list:
+        infile = mergeddir + '/geom_master/' + f + '.rdr.full'
+        imgi = isceobj.createImage()
+        imgi.load(infile+'.xml')
+        geomIm = imgi.memMap()[cropymin:cropymax,cropxmin:cropxmax,0]
+        imgo = isceobj.createImage()
+        imgo.load(infile+'.xml')
+        imgo.filename = infile+'.crop'
+        imgo.width = cropxmax-cropxmin
+        imgo.length =cropymax-cropymin
+        imgo.dump(imgo.filename+'.xml')
+        
+        geomIm.tofile(imgo.filename)
+
+
 
 def downLook(infile, outfile,alks,rlks):
     inImage = isceobj.createImage()
@@ -115,9 +159,13 @@ def downLook(infile, outfile,alks,rlks):
     lkObj.setOutputFilename(outfile)
     lkObj.looks()
 
-file_list = list(['lat','lon','hgt','los'])#,'incLocal','shadowMask'])
+
 for f in file_list:
-    infile = mergeddir + '/geom_master/' + f + '.rdr.full'
+    if crop:
+        infile = mergeddir + '/geom_master/' + f + '.rdr.full.crop'
+    else:
+        infile = mergeddir + '/geom_master/' + f + '.rdr.full'
+        
     outfile = mergeddir + '/geom_master/' + f + '_lk.rdr'
     downLook(infile, outfile,alks,rlks)
     
@@ -146,6 +194,8 @@ hgt_ifg = Image.memMap()[:,:,0]
 hgt_ifg = hgt_ifg.copy().astype(np.float32)
 hgt_ifg[hgt_ifg==0]=np.nan
 Image.finalizeImage()
+
+nyl,nxl = lon_ifg.shape
 
 geom = {}
 geom['lon_ifg'] = lon_ifg
@@ -179,19 +229,10 @@ lat_bounds = np.array([ul[1],ur[1],ur[1],lr[1],lr[1],ll[1],ll[1],ul[1]])
 
 
 pad=2
-plt.close()
+import cartopy.crs as ccrs
+makeMap.mapBackground('World_Shaded_Relief',lon_bounds.min,lon_bounds.max,lat_bounds.min,lat_bounds.max,1,7,'example',borders=False)
+plt.plot(lon_bounds,lat_bounds,linewidth=2,color='red',zorder=10,transform=ccrs.PlateCarree())
 plt.rc('font',size=14)
-fig = plt.figure(figsize=(6,6))
-m = Basemap(llcrnrlat=lat_bounds.min()-pad,urcrnrlat=lat_bounds.max()+pad,\
-        llcrnrlon=lon_bounds.min()-pad,urcrnrlon=lon_bounds.max()+pad,resolution='i',epsg=3395)
-m.arcgisimage(service='World_Shaded_Relief',xpixels=1000)
-m.drawstates(linewidth=1.5,zorder=1,color='white')
-m.drawcountries(linewidth=1.5,zorder=1,color='white')
-m.drawparallels(np.arange(np.floor(lat_bounds.min()-pad), np.ceil(lat_bounds.max()+pad), 2), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-m.drawmeridians(np.arange(np.floor(lon_bounds.min()-pad), np.ceil(lon_bounds.max()+pad),2), linewidth=0,labels=[1,0,0,1])
-m.plot(lon_bounds,lat_bounds,linewidth=2,latlon=True,color='red',zorder=10)
-plt.title('Extent of stack')
-plt.show()
 plt.savefig(workdir + '/Figs/areamap.svg',transparent=True,dpi=100 )
 
 mergeddir =workdir + '/merged'
@@ -211,7 +252,7 @@ params['dn0'] =          dn0
 params['nd'] =           nd
 params['lam'] =          lam
 params['seaLevel'] =          seaLevel
-
+params['crop'] =        crop
 params['workdir'] =      workdir
 params['intdir'] =       intdir
 params['tsdir'] =        tsdir
@@ -232,6 +273,11 @@ params['rlks'] =         rlks
 params['intdir'] =       intdir
 params['tsdir'] =        tsdir
 params['slcdir'] =        slcdir
+params['cropymin'] =     cropymin
+params['cropymax'] =     cropymax
+params['cropxmin'] =     cropxmin
+params['cropxmax'] =     cropxmax
+
 
 # Save the dictionary
 np.save('params.npy',params)

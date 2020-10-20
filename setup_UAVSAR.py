@@ -19,7 +19,7 @@ import glob
 import os
 from datetime import date
 import isceobj
-from mpl_toolkits.basemap import Basemap
+import makeMap
 from mroipac.looks.Looks import Looks
 
 
@@ -302,19 +302,10 @@ lat_bounds = np.array([ul[1],ur[1],ur[1],lr[1],lr[1],ll[1],ll[1],ul[1]])
 
 
 pad=.5
-plt.close()
+import cartopy.crs as ccrs
+makeMap.mapBackground('World_Shaded_Relief',lon_bounds.min,lon_bounds.max,lat_bounds.min,lat_bounds.max,1,7,'example',borders=False)
+plt.plot(lon_bounds,lat_bounds,linewidth=2,color='red',zorder=10,transform=ccrs.PlateCarree())
 plt.rc('font',size=14)
-fig = plt.figure(figsize=(6,6))
-m = Basemap(llcrnrlat=lat_bounds.min()-pad,urcrnrlat=lat_bounds.max()+pad,\
-        llcrnrlon=lon_bounds.min()-pad,urcrnrlon=lon_bounds.max()+pad,resolution='i',epsg=3395)
-m.arcgisimage(service='World_Shaded_Relief',xpixels=1000)
-m.drawstates(linewidth=1.5,zorder=1,color='white')
-m.drawcountries(linewidth=1.5,zorder=1,color='white')
-m.drawparallels(np.arange(np.floor(lat_bounds.min()-pad), np.ceil(lat_bounds.max()+pad), 2), linewidth=0, labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-m.drawmeridians(np.arange(np.floor(lon_bounds.min()-pad), np.ceil(lon_bounds.max()+pad),2), linewidth=0,labels=[1,0,0,1])
-m.plot(lon_bounds,lat_bounds,linewidth=2,latlon=True,color='red',zorder=10)
-plt.title('Extent of stack')
-plt.show()
 plt.savefig(workdir + '/Figs/areamap.svg',transparent=True,dpi=100 )
 
 

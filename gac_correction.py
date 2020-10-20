@@ -15,6 +15,7 @@ from mpl_toolkits.basemap import Basemap
 from matplotlib import pyplot as plt
 import scipy.spatial.qhull as qhull
 import glob
+import makeMap
 
 # Local Imports
 from Statistics import structure_function
@@ -252,38 +253,12 @@ ax.set_title('model')
 ax =  fig.add_subplot(4,1,3);plt.imshow(phs_c,vmin=vmin,vmax=vmax)
 ax.set_title('corrected ifg')
 
+
+# MAKE MAPS
 pad=0
-fig = plt.figure(figsize=(16,5))
-ax = fig.add_subplot(1,3,1)
-ax.set_title('Original IFG')
-m = Basemap(epsg=3395, llcrnrlat=(lat_ifg.min()-pad), urcrnrlat=(lat_ifg.max()+pad),\
-            llcrnrlon=(lon_ifg.min()-pad), urcrnrlon=(lon_ifg.max()+pad), resolution='i')
-#m.drawstates(linewidth=0.5,zorder=6,color='white')
-m.arcgisimage(service='World_Shaded_Relief',xpixels=800)
-cf = m.pcolormesh(lon_ifg,lat_ifg,phs_ifg,shading='flat',latlon=True, zorder=8,vmin=vmin,vmax=vmax)
-#cbar = m.colorbar(cf,location='bottom',pad="10%")
-#cbar.set_label('cm')
-plt.show()
-
-ax = fig.add_subplot(1,3,2)
-ax.set_title('Modeled Tropospheric delay')
-m = Basemap(epsg=3395, llcrnrlat=(lat_ifg.min()-pad), urcrnrlat=(lat_ifg.max()+pad),\
-            llcrnrlon=(lon_ifg.min()-pad), urcrnrlon=(lon_ifg.max()+pad), resolution='i')
-m.arcgisimage(service='World_Shaded_Relief',xpixels=800)
-cf = m.pcolormesh(lon_ifg,lat_ifg,gac_mod,shading='flat',latlon=True, zorder=8,vmin=vmin,vmax=vmax)
-cbar = m.colorbar(cf,location='bottom',pad="10%")
-cbar.set_label('Phase delay (cm)')
-plt.show()
-
-ax = fig.add_subplot(1,3,3)
-ax.set_title('Corrected IFG')
-m = Basemap(epsg=3395, llcrnrlat=(lat_ifg.min()-pad), urcrnrlat=(lat_ifg.max()+pad),\
-            llcrnrlon=(lon_ifg.min()-pad), urcrnrlon=(lon_ifg.max()+pad), resolution='i')
-m.drawstates(linewidth=0.5,zorder=6,color='white')
-m.arcgisimage(service='World_Shaded_Relief',xpixels=800)
-cf = m.pcolormesh(lon_ifg,lat_ifg,phs_c,shading='flat',latlon=True, zorder=8,vmin=vmin,vmax=vmax)
-plt.show()
-plt.savefig(workdir + 'Figs/GACOS_correction.png',transparent=True,dpi=300 )
+makeMap.makeImg(phs_ifg,lon_ifg,lat_ifg,vmin,vmax,pad,'Original IFG (cm)')
+makeMap.makeImg(gac_mod,lon_ifg,lat_ifg,vmin,vmax,pad,'Modeled Tropospheric delay (cm)')
+makeMap.makeImg(phs_c,lon_ifg,lat_ifg,vmin,vmax,pad,'Corrected IFG (cm)')
 
 ## Load example
 ## Load phs

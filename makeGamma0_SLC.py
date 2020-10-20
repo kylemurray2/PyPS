@@ -27,8 +27,6 @@ params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 dates = params['dates']
 
-nblocks = 40 #how to split up the images to save memory in the for loops
-
 # Make the gaussian filter we'll convolve with ifg
 rx = 20
 ry = 20
@@ -60,77 +58,51 @@ for ii,d in enumerate(dates[:-1]):
         intImage = intimg.clone() # Copy the interferogram image from before
         intImage.filename = params['slcdir'] + '/' + d + '/fine_diff.int'
         intImage.dump(intImage.filename + '.xml') # Write out xml
-        fid=open(intImage.filename,"ab+")
+        fid=open(intImage.filename,"wb+")
         print('working on ' + d)
+        
+        #load ifg real and imaginary parts
+        f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full'
+#        os.system('fixImageXml.py -i ' + f + ' -f')
+        slcImage = isceobj.createSlcImage()
+        slcImage.load(f + '.xml')
+        slc1 = slcImage.memMap()[:,:,0]
+        f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
+#        os.system('fixImageXml.py -i ' + f + ' -f')
 
-
-        for kk in np.arange(0,nblocks):
-            
-            idy = int(np.floor(ny/nblocks))
-            start = int(kk*idy)
-            stop = start+idy+1
-            
-            #load ifg real and imaginary parts
-            f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full'
-    #        os.system('fixImageXml.py -i ' + f + ' -f')
-            slcImage = isceobj.createSlcImage()
-            slcImage.load(f + '.xml')
-            slc1 = slcImage.memMap()[start:stop,:,0]
-            f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
-    #        os.system('fixImageXml.py -i ' + f + ' -f')
-    
-            slcImage = isceobj.createSlcImage()
-            slcImage.load(f + '.xml')
-            slc2 = slcImage.memMap()[start:stop,:,0]
-            ifg = np.multiply(slc1,np.conj(slc2))
-            ifg_real = np.real(ifg)
-            ifg_imag = np.imag(ifg)
-    #        ifg_real[np.where(ifg_real==0)] = np.nan
-    #        ifg_imag[np.where(ifg_real==0)] = np.nan
-            
-        #filter real and imaginary parts    
-            ifg_real_filt = cv2.filter2D(ifg_real,-1, gaus)
-            ifg_imag_filt = cv2.filter2D(ifg_imag,-1, gaus)  
-            phs_filt = np.arctan2(ifg_imag_filt, ifg_real_filt).astype(np.float32)
-            
-            # Difference them 
-            cpx0    = ifg_real      + 1j * ifg_imag
-            cpxf    = ifg_real_filt + 1j * ifg_imag_filt
-            cpx0   /= abs(cpx0)
-            cpxf   /= abs(cpxf)
-            
-            # Difference them and append it to the file
-            fid.write(np.multiply(cpx0, np.conj(cpxf)))
+        slcImage = isceobj.createSlcImage()
+        slcImage.load(f + '.xml')
+        slc2 = slcImage.memMap()[:,:,0]
+        ifg = np.multiply(slc1,np.conj(slc2))
+        ifg_real = np.real(ifg)
+        ifg_imag = np.imag(ifg)
+#        ifg_real[np.where(ifg_real==0)] = np.nan
+#        ifg_imag[np.where(ifg_real==0)] = np.nan
+        
+    #filter real and imaginary parts    
+        ifg_real_filt = cv2.filter2D(ifg_real,-1, gaus)
+        ifg_imag_filt = cv2.filter2D(ifg_imag,-1, gaus)  
+        phs_filt = np.arctan2(ifg_imag_filt, ifg_real_filt).astype(np.float32)
+        
+        # Difference them 
+        cpx0    = ifg_real      + 1j * ifg_imag
+        cpxf    = ifg_real_filt + 1j * ifg_imag_filt
+        cpx0   /= abs(cpx0)
+        cpxf   /= abs(cpxf)
+        
+        # Difference them and append it to the file
+        fid.write(np.multiply(cpx0, np.conj(cpxf)))
         fid.close()
     else:
         print(d + ' already exists.')
     #mad = lambda x: np.sqrt(np.nanmedian(abs(x - np.nanmedian(x,axis=0))**2),axis=0d)
 
-nblocks+=20 # increase the nblocks because this part is more memory intensive
+nblocks = 40 # increase the nblocks because this part is more memory intensive
 
 gamma0 =np.zeros((ny,nx)).astype(np.float32)
 # Make a stack of the diff images (memory mapped )
 # We have to do this in 20 subsections to save on memory
 
-diffImage = intimg.clone()   
-test = []
-for ii in range(nd):
-    d = dates[ii]
-    diff_file = params['slcdir'] + '/' + d + '/fine_diff.int'
-    diffImage.load(diff_file + '.xml')
-    test.append(diffImage.memMap()[5000,5000,0])
-plt.figure()
-plt.plot(test)
-
-diffImage = intimg.clone()   
-test = []
-for ii in range(nd):
-    d = dates[ii]
-    diff_file = params['slcdir'] + '/' + d + '/fine_diff.int'
-    diffImage.load(diff_file + '.xml')
-    test.append(diffImage.memMap()[2000,2000,0])
-plt.figure()
-plt.plot(test)
 
 diffImage = intimg.clone()   
 blocks = np.linspace(0,params['ny'],nblocks).astype(int)

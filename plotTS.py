@@ -12,7 +12,7 @@ copied and modified for your specific area.
 import numpy as np
 import isceobj
 import os
-from mpl_toolkits.basemap import Basemap
+import makeMap
 from matplotlib import pyplot as plt
 from skimage.measure import profile_line as pl
 #import fitSine
@@ -54,6 +54,7 @@ for ii,point in enumerate(example_ts):
 #    plt.savefig(workdir + 'Figs/timeseries' + str(ii) + '.svg',transparent=True,dpi=200)
 
 # Plot rate map
+makeMap.makeImg(rates,lon_ifg,lat_ifg,vmin,vmax,pad,'rates (cm)')
 plt.rc('font',size=12)
 plt.figure(figsize=(12,12))
 m = Basemap(epsg=3395, llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\

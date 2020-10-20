@@ -14,17 +14,17 @@ import glob
 params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 
-geocode = True
+geocode = False
 nproc='20'
 ntilerow='4'
-ntilecol='4'
+ntilecol='2 '
 gamma0_file = params['tsdir'] + '/gamma0_lk.int'
 pair=params['pairs'][0]
 
 for pair in params['pairs']:
     infile = params['intdir']+ '/' + pair+'/filt.int'
     corfile = params['intdir']+ '/' + pair+'/cor_lk.r4'
-    outfile = params['intdir']+ '/' + pair+'/filt.unw'
+    outfile = params['intdir']+ '/' + pair+'/fine.unw'
     if not os.path.isfile(outfile):
         print('unwrapping ' + pair)
         # The command line way doesn't work right now, so we'll use the config file
@@ -75,7 +75,7 @@ for pair in params['pairs']:
         conf.append('RMTMPTILE TRUE                                                    \n')
         with open(config_file_name,'w') as f:
             [f.writelines(c) for c in conf]
-        command = '/home/insar/OUR_BIN/LIN/snaphu -f ' + config_file_name 
+        command = 'snaphu -f ' + config_file_name 
         os.system(command)
     else:
         print(outfile + ' already exists.')
