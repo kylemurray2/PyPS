@@ -63,7 +63,7 @@ def mapImg3(img1,img2,img3, lons, lats, vmin, vmax, pad, title1,title2,title3):
     url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}.jpg'
     image = cimgt.GoogleTiles(url=url)
     data_crs = ccrs.PlateCarree()
-    fig = plt.figure()
+    fig = plt.figure(figsize=(10,8))
     lon_formatter = LongitudeFormatter(zero_direction_label=True)
     lat_formatter = LatitudeFormatter()
     
