@@ -23,27 +23,37 @@ from astropy.convolution import convolve
 params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 geom = np.load('geom.npy',allow_pickle=True).item()
+locals().update(geom)
+
 gam = np.load('gam.npy')
 gam[gam==0] = np.nan
-gamthresh = np.nanmean(gam) - np.nanstd(gam)
+gamthresh = .64 #np.nanmedian(gam) - np.nanstd(gam)
 msk = np.zeros(gam.shape)
 msk[gam>gamthresh] = 1
+msk[hgt_ifg<16] = 0
 plt.figure();plt.imshow(msk)
 # Load ifg
-pairID = 1
+pairID = 0
 pair=pairs[pairID]
-
-kernel = Gaussian2DKernel(x_stddev=2)
+kernel = Gaussian2DKernel(x_stddev=1)
     
 for pair in pairs:
+
+    
     ifgimg = isceobj.createIntImage()
     ifgimg.load(params['intdir'] + '/' + pair + '/fine_lk.int.xml')
     ifg_real = np.copy(np.real( ifgimg.memMap()[:,:,0]))
     ifg_imag = np.copy(np.imag( ifgimg.memMap()[:,:,0]))
     
+    corimg = isceobj.createImage()
+    corimg.load(params['intdir'] + '/' + pair + '/cor_lk.r4.xml')
+    cor = np.copy(corimg.memMap()[:,:,0])
+    cor[cor==0]=np.nan
+    msk2 = np.zeros(msk.shape)
+    msk2[np.where((gam>gamthresh) & (cor>0.35))] = 1
     # convert low gamma areas to nans
-    ifg_real[gam<gamthresh] = np.nan
-    ifg_real[gam<gamthresh] = np.nan
+    ifg_real[msk2==0] = np.nan
+    ifg_real[msk2==0] = np.nan
     
     # Do the filtering
 
@@ -53,11 +63,18 @@ for pair in pairs:
     astropy_conv_r = convolve(ifg_real, kernel)
     astropy_conv_i = convolve(ifg_imag, kernel)
     
-    ifg_filt = astropy_conv_i*1j + astropy_conv_r
+    #Now add back in the good data
+    astropy_conv_r[msk2==1] = ifg_real[msk2==1]
+    astropy_conv_i[msk2==1] = ifg_imag[msk2==1]
     
+    ifg_filt = astropy_conv_i*1j + astropy_conv_r
+    ifg_filt[np.isnan(ifg_filt)] = 0
+
     out1 = ifgimg.copy('read')
     out1.filename = params['intdir'] +'/' + pair + '/filt.int'
     out1.dump(out1.filename + '.xml') # Write out xml
     ifg_filt.tofile(out1.filename) # Write file out
     out1.renderHdr()
     out1.renderVRT()
+
+
