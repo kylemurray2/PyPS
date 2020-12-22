@@ -24,13 +24,16 @@ import fitSine
 #********************************
 
 def invertRates(data,params,dn,seasonals=False,mcov_flag=False,water_elevation=-103,uncertainties=False):
-    ''' data is a flattened stack of inverted displacements shape=[nd,(nx*ny)]
+    ''' data is a  stack of inverted displacements shape=[ny,nx]
         you can invert for a sinusoidal fit at each pixel with seasonals = True
         mcov_flag is the model covariance and works only with seasonals=False for now.
         Water elevation is usually not zero (relative to wgs84 ellipsoid.'''
 
-    nyl = params['ymax'] - params['ymin']
-    nxl = params['xmax'] - params['xmin']
+    # nyl = params['ymax'] - params['ymin']
+    # nxl = params['xmax'] - params['xmin']
+    data = data.astype(np.float32).reshape((len(dn),-1)) 
+    nyl,nxl = params['nyl'],params['nxl']
+    
     lam = params['lam']
     dn0 = dn -dn[0]
     d1=0
