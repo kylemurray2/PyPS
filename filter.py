@@ -10,7 +10,6 @@ import numpy as np
 import astropy
 import isceobj
 from matplotlib import pyplot as plt
-from mpl_toolkits.basemap import Basemap
 import cv2
 import os
 from astropy.io import fits
@@ -27,11 +26,11 @@ locals().update(geom)
 
 gam = np.load('gam.npy')
 gam[gam==0] = np.nan
-gamthresh = .64 #np.nanmedian(gam) - np.nanstd(gam)
+gamthresh =.48#np.nanmedian(gam) #- np.nanstd(gam)
 msk = np.zeros(gam.shape)
 msk[gam>gamthresh] = 1
 msk[hgt_ifg<16] = 0
-plt.figure();plt.imshow(msk)
+plt.figure();plt.imshow(msk);plt.show()
 # Load ifg
 pairID = 0
 pair=pairs[pairID]
