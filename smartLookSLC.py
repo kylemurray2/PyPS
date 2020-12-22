@@ -14,12 +14,11 @@ work in progress
 import numpy as np
 import isceobj
 from matplotlib import pyplot as plt
-from mpl_toolkits.basemap import Basemap
 import cv2
 import os
 
-filterFlag = False
-filterStrength = '0.1'
+filterFlag = True
+filterStrength = '0.2'
 
 nblocks = 1
 
@@ -196,10 +195,12 @@ for pair in params['pairs']: #loop through each ifg and save to
         outc.renderVRT() 
         fid.close()
         fidc.close()
-
+    # for pair in params['pairs']: #loop through each ifg and save to 
         if filterFlag:
+            name = params['intdir'] + '/' + pair + '/fine_lk.int'
+            corname = params['intdir'] + '/' + pair + '/cor.r4'
             offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/kdm95/Software/isce2/contrib/stack/topsStack/FilterAndCoherence.py -i ' + out.filename + ' -f ' +  offilt + ' -s ' + filterStrength
+            command = 'python /home/km/Software/isce/components/stack/stripmapStack/FilterAndCoherence.py -i ' + name + ' -c ' + corname +  ' -f ' +  offilt + ' -s ' + filterStrength
             os.system(command)
             
             
