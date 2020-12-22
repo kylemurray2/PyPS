@@ -13,7 +13,11 @@ from datetime import date
 import isceobj
 import matplotlib.pyplot as plt
 import makeMap
+import cartopy.crs as ccrs
 from mroipac.looks.Looks import Looks
+from scipy.interpolate import griddata 
+import cv2
+from scipy import signal
 
 #<><><><><><><><><><><><>Set these variables><><><><><><><><><><><><><><><
 # Define area of interest
@@ -30,7 +34,7 @@ from mroipac.looks.Looks import Looks
 import localParams
 workdir, skip, alks, rlks, seaLevel, ifg_mode,crop,cropymin,cropymax,cropxmin,cropxmax = localParams.getLocalParams()
 
-
+doDownlook = True
 lam = 0.056 # 0.056 for c-band
 mergeddir=workdir + '/merged'
 intdir = mergeddir + '/interferograms'
@@ -146,28 +150,27 @@ if crop:
         geomIm.tofile(imgo.filename)
 
 
-
-def downLook(infile, outfile,alks,rlks):
-    inImage = isceobj.createImage()
-    inImage.load(infile + '.xml')
-    inImage.filename = infile
-
-    lkObj = Looks()
-    lkObj.setDownLooks(alks)
-    lkObj.setAcrossLooks(rlks)
-    lkObj.setInputImage(inImage)
-    lkObj.setOutputFilename(outfile)
-    lkObj.looks()
-
-
-for f in file_list:
-    if crop:
-        infile = mergeddir + '/geom_master/' + f + '.rdr.full.crop'
-    else:
-        infile = mergeddir + '/geom_master/' + f + '.rdr.full'
-        
-    outfile = mergeddir + '/geom_master/' + f + '_lk.rdr'
-    downLook(infile, outfile,alks,rlks)
+if doDownlook:
+    def downLook(infile, outfile,alks,rlks):
+        inImage = isceobj.createImage()
+        inImage.load(infile + '.xml')
+        inImage.filename = infile
+    
+        lkObj = Looks()
+        lkObj.setDownLooks(alks)
+        lkObj.setAcrossLooks(rlks)
+        lkObj.setInputImage(inImage)
+        lkObj.setOutputFilename(outfile)
+        lkObj.looks()
+    for f in file_list:
+        if crop:
+            infile = mergeddir + '/geom_master/' + f + '.rdr.full.crop'
+        else:
+            infile = mergeddir + '/geom_master/' + f + '.rdr.full'
+            
+        outfile = mergeddir + '/geom_master/' + f + '_lk.rdr'
+        downLook(infile, outfile,alks,rlks)
+    
     
 # Get bounding coordinates (Frame)
 f_lon_lk = mergeddir + '/geom_master/lon_lk.rdr'
@@ -197,12 +200,13 @@ Image.finalizeImage()
 
 nyl,nxl = lon_ifg.shape
 
-geom = {}
-geom['lon_ifg'] = lon_ifg
-geom['lat_ifg'] = lat_ifg
-geom['hgt_ifg'] = hgt_ifg
-np.save('geom.npy',geom)
+# Geniusly get rid of edge artifacts from downlooking
+Q = np.array([[0,0,0],[0,1,0],[0,0,0]])
+lon_ifg = signal.convolve2d(lon_ifg,Q, mode='same')
+lat_ifg = signal.convolve2d(lat_ifg,Q, mode='same')
+hgt_ifg = signal.convolve2d(hgt_ifg,Q, mode='same')
 
+# Figure out where the nan values begin and end so we can crop them if we want later.
 for l in np.arange(0,nyl):
     ll = lon_ifg[l,:]
     if not np.isnan(ll.max()):
@@ -213,33 +217,51 @@ for p in np.arange(l+1,nyl):
     if np.isnan(ll.max()):
         break
 l+=1
-
 ymin=l+1
 ymax=p-1
 xmin=0
 xmax=nxl
-
 ul = (lon_ifg[l+1,1],lat_ifg[l+1,1])
 ur = (lon_ifg[l+1,-2],lat_ifg[l+1,-2])
 ll = (lon_ifg[p-2,1],lat_ifg[p-2,1])
 lr = (lon_ifg[p-2,-2],lat_ifg[p-2,-2])
-
 lon_bounds = np.array([ul[0],ur[0],ur[0],lr[0],lr[0],ll[0],ll[0],ul[0]])
 lat_bounds = np.array([ul[1],ur[1],ur[1],lr[1],lr[1],ll[1],ll[1],ul[1]])
 
+# Now extrapolate the geom edges out so we can map non-rectangle images
+xx,yy = np.meshgrid(np.arange(0,nxl), np.arange(0,nyl))
+xxValid = xx[~np.isnan(lon_ifg)].astype(np.float32)
+yyValid = yy[~np.isnan(lon_ifg)].astype(np.float32)
+lonValid = lon_ifg[~np.isnan(lon_ifg)].astype(np.float32)
+latValid = lat_ifg[~np.isnan(lon_ifg)].astype(np.float32)
+lonI = griddata((xxValid,yyValid), lonValid , (xx,yy), method='nearest')
+xxValid = xx[~np.isnan(lat_ifg)].astype(np.float32)
+yyValid = yy[~np.isnan(lat_ifg)].astype(np.float32)
+lonValid = lon_ifg[~np.isnan(lat_ifg)].astype(np.float32)
+latValid = lat_ifg[~np.isnan(lat_ifg)].astype(np.float32)
+latI = griddata((xxValid,yyValid), latValid , (xx,yy), method='nearest')
+minlat=latI.min()
+maxlat=latI.max()
+minlon=lonI.min()
+maxlon=lonI.max()
 
+bg = 'World_Shaded_Relief'
 pad=2
-import cartopy.crs as ccrs
-makeMap.mapBackground('World_Shaded_Relief',lon_bounds.min,lon_bounds.max,lat_bounds.min,lat_bounds.max,1,7,'example',borders=False)
+makeMap.mapBackground(bg,minlon,maxlon,minlat,maxlat,1,8,'Footprint',borders=False)
 plt.plot(lon_bounds,lat_bounds,linewidth=2,color='red',zorder=10,transform=ccrs.PlateCarree())
 plt.rc('font',size=14)
 plt.savefig(workdir + '/Figs/areamap.svg',transparent=True,dpi=100 )
+
 
 mergeddir =workdir + '/merged'
 intdir = mergeddir + '/interferograms'
 tsdir = workdir + '/TS'
 
-plt.imshow(hgt_ifg)
+geom = {}
+geom['lon_ifg'] = lonI
+geom['lat_ifg'] = latI
+geom['hgt_ifg'] = hgt_ifg
+np.save('geom.npy',geom)
 
 # Save arrays and variables to a dictionary 'params'
 params = dict()
