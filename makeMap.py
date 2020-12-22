@@ -17,33 +17,51 @@ from matplotlib import pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-def mapImg(img, lons, lats, vmin, vmax, pad, title):
+def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title):
 
     minlat=lats.min()
     maxlat=lats.max()
     minlon=lons.min()
     maxlon=lons.max()
-    
-    url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}.jpg'
+    bg = 'World_Imagery'
+    url = 'https://server.arcgisonline.com/ArcGIS/rest/services/' + bg + '/MapServer/tile/{z}/{y}/{x}.jpg'
     image = cimgt.GoogleTiles(url=url)
     data_crs = ccrs.PlateCarree()
-    fig = plt.figure()
+    fig = plt.figure(figsize=(6,8))
     ax = plt.axes(projection=data_crs)
-    img_handle = plt.pcolormesh(lons, lats, img, transform=data_crs)
+    img_handle = plt.pcolormesh(lons, lats, img, vmin=vmin,vmax=vmax,transform=data_crs)
+   
     
     lon_range = (pad+maxlon) - (minlon-pad)
     lat_range = (pad+maxlat) - (minlat-pad)
     rangeMin = np.min(np.array([lon_range,lat_range]))
     tick_increment = round(rangeMin/4,1)
     
-    ax.set_xticks(np.arange(np.floor(minlon-pad),np.ceil(maxlon+pad),tick_increment), crs=ccrs.PlateCarree())
-    ax.set_yticks(np.arange(np.floor(minlat-pad),np.ceil(maxlat+pad),tick_increment), crs=ccrs.PlateCarree())
-    lon_formatter = LongitudeFormatter(zero_direction_label=True)
-    lat_formatter = LatitudeFormatter()
-    ax.xaxis.set_major_formatter(lon_formatter)
-    ax.yaxis.set_major_formatter(lat_formatter)
-    ax.add_image(image,8) #zoom level
-    plt.colorbar(img_handle,fraction=0.03, pad=0.09,orientation='horizontal')
+    import matplotlib.ticker as mticker
+    from cartopy.mpl.ticker import (LongitudeFormatter, LatitudeFormatter,
+                                LatitudeLocator)
+    
+    gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
+                  linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    gl.xlocator = mticker.FixedLocator(np.arange(np.floor(minlon-pad),np.ceil(maxlon+pad),tick_increment))
+    gl.ylocator = LatitudeLocator()
+    gl.xformatter = LongitudeFormatter()
+    gl.yformatter = LatitudeFormatter()
+    gl.ylabel_style = {'size': 8, 'color': 'black'}
+    gl.xlabel_style = {'size': 8, 'color': 'black'}
+    gl.top_labels = False
+    gl.right_labels = False
+    
+    # ax.set_xticks(np.arange(np.floor(minlon-pad),np.ceil(maxlon+pad),tick_increment), crs=ccrs.PlateCarree())
+    # ax.set_yticks(np.arange(np.floor(minlat-pad),np.ceil(maxlat+pad),tick_increment), crs=ccrs.PlateCarree())
+    # ax.lon_formatter = LongitudeFormatter(zero_direction_label=True)
+    # lat_formatter = LatitudeFormatter()
+    # ax.xlabel_style = {'size': 15, 'color': 'gray'}
+    # ax.xlabel_style = {'color': 'red', 'weight': 'bold'}
+    # ax.xaxis.set_major_formatter(lon_formatter)
+    # ax.yaxis.set_major_formatter(lat_formatter)
+    ax.add_image(image,zoom) #zoom level
+    plt.colorbar(img_handle,fraction=0.03, pad=0.05,orientation='horizontal')
     plt.title(title)
     plt.show()
     
@@ -144,7 +162,7 @@ def mapBackground(bg, minlon, maxlon, minlat, maxlat, pad, zoomLevel, title, bor
     data_crs = ccrs.PlateCarree()
     fig =  plt.figure(figsize=(6,6))
     ax = plt.axes(projection=data_crs)
-    ax.set_extent([minlon-pad,maxlon+pad,minlat-pad,maxlat+pad], crs=ccrs.PlateCarree())
+    ax.set_extent([minlon-pad, maxlon+pad, minlat-pad, maxlat+pad], crs=ccrs.PlateCarree())
 
     if borders:
         ax.add_feature(cfeature.BORDERS,linewidth=1,color='white')
