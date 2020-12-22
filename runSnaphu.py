@@ -17,14 +17,13 @@ locals().update(params)
 geocode = False
 nproc='20'
 ntilerow='4'
-ntilecol='2 '
-gamma0_file = params['tsdir'] + '/gamma0_lk.int'
+ntilecol='8'
 pair=params['pairs'][0]
 
 for pair in params['pairs']:
-    infile = params['intdir']+ '/' + pair+'/filt.int'
-    corfile = params['intdir']+ '/' + pair+'/cor_lk.r4'
-    outfile = params['intdir']+ '/' + pair+'/fine.unw'
+    infile = params['intdir']+ '/' + pair+'/fine_lk_filt.int'
+    corfile = params['intdir']+ '/' + pair+'/cor.r4'
+    outfile = params['intdir']+ '/' + pair+'/filt.unw'
     if not os.path.isfile(outfile):
         print('unwrapping ' + pair)
         # The command line way doesn't work right now, so we'll use the config file
@@ -70,12 +69,12 @@ for pair in params['pairs']:
         conf.append('# Maximum number of child processes to start for parallel tile    \n')
         conf.append('# unwrapping.                                                     \n')
         conf.append('NPROC  '          +     nproc                                  + '\n')
-        conf.append('ROWOVRLP 100                                                      \n')
-        conf.append('COLOVRLP 100                                                      \n')
+        conf.append('ROWOVRLP 200                                                      \n')
+        conf.append('COLOVRLP 200                                                      \n')
         conf.append('RMTMPTILE TRUE                                                    \n')
         with open(config_file_name,'w') as f:
             [f.writelines(c) for c in conf]
-        command = 'snaphu -f ' + config_file_name 
+        command = 'snaphu --mcf -S -f  ' + config_file_name 
         os.system(command)
     else:
         print(outfile + ' already exists.')
