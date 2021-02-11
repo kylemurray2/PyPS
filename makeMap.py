@@ -29,7 +29,7 @@ def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title):
     data_crs = ccrs.PlateCarree()
     fig = plt.figure(figsize=(6,8))
     ax = plt.axes(projection=data_crs)
-    img_handle = plt.pcolormesh(lons, lats, img, vmin=vmin,vmax=vmax,transform=data_crs)
+    img_handle = plt.pcolormesh(lons, lats, img, vmin=vmin,vmax=vmax,transform=data_crs,rasterized = True)
    
     
     lon_range = (pad+maxlon) - (minlon-pad)
