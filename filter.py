@@ -76,4 +76,51 @@ for pair in pairs:
     out1.renderHdr()
     out1.renderVRT()
 
+# from scipy import fftpack
+# im_fft = fftpack.fft2(unw)
+# # In the lines following, we'll make a copy of the original spectrum and
+# # truncate coefficients.
+# # Define the fraction of coefficients (in each direction) we keep
+# keep_fraction = 0.001
+# # Call ff a copy of the original transform. Numpy arrays have a copy
+# # method for this purpose.
+# im_fft2 = im_fft.copy()
+# # Set to zero all rows with indices between r*keep_fraction and
+# # r*(1-keep_fraction):
+# im_fft2[int(nyl*keep_fraction):int(nyl*(1-keep_fraction))] = 0
+# # Similarly with the columns:
+# im_fft2[:, int(nxl*keep_fraction):int(nxl*(1-keep_fraction))] = 0
+# im_new = fftpack.ifft2(im_fft2).real
+# fig,ax = plt.subplots(1,3)
+# ax[0].imshow(unw)
+# ax[1].imshow(im_new)
+# ax[2].imshow(unw-im_new)
+# keep_fraction = 0.005
+# stack = []
+# for p in params['pairs']:
+#     unw_file = params['intdir'] + '/' + p + '/filt.unw'
+#     unwImage = isceobj.createIntImage()
+#     unwImage.load(unw_file + '.xml')
+#     # unw = unwImage.memMap()[:,:,0] - np.nanmean(unwImage.memMap()[:,:,0][msk==1])
+#     unw = unwImage.memMap()[:,:,0]
+#     im_fft = fftpack.fft2(unw)
+#     im_fft2 = im_fft.copy()
+#     im_fft2[int(nyl*keep_fraction):int(nyl*(1-keep_fraction))] = 0
+#     im_fft2[:, int(nxl*keep_fraction):int(nxl*(1-keep_fraction))] = 0
+#     unwfilt = unw -fftpack.ifft2(im_fft2).real
+#     unwfilt = unwfilt-unwfilt[r,c]
+#     stack.append(unwfilt)
+# # stack.append(np.zeros(unw.shape))
+# stack = np.asarray(stack,dtype=np.float32)
 
+# from astropy.convolution import convolve
+# dim = 31
+# x, y = np.meshgrid(np.linspace(-1,1,dim), np.linspace(-1,1,dim))
+# d = np.sqrt(x*x+y*y)
+# sigma, mu = 30, 0.0
+# g = np.exp(-( (d-mu)**2 / ( 2.0 * sigma**2 ) ) )
+# filt = convolve(unw,g)
+# fig,ax = plt.subplots(1,3)
+# ax[0].imshow(unw)
+# ax[1].imshow(filt)
+# ax[2].imshow(unw-filt)
