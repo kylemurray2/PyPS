@@ -35,7 +35,7 @@ def get_radius(X,P):
 
 #r,dx,dy = get_radius(np.array([xi,yi]).T,np.array([xi,yi]).T)
 
-def get_qpw (X, P, dr, nu):
+def get_qpw(X, P, dr, nu):
     # Compute the Green's functions for all (X;P) combinations
     
     r,dx,dy = get_radius(X, P);
@@ -62,12 +62,8 @@ def get_subpqw(X1,Y1,dim,nu,dr):
     return X,Y,q,p,w,n1,n2
     
 def make_Glos(q,p,w,LosPath='/data/kdm95/WW/LOS.npy'):
-    LOS = np.load('LOS.npy')
-    los1 = LOS[0]
-    los2 = LOS[1]
-    los3 = LOS[2]
-    los4 = LOS[3]
-
+   # this one doesn't solve for the Z component
+    los1,los2,los3,los4 = np.load(LosPath)
     # Make design matrix Glos1
     col1 = los1[0]*q + los1[1]*w
     col2 = los1[0]*w + los1[1]*p
@@ -90,12 +86,118 @@ def make_Glos(q,p,w,LosPath='/data/kdm95/WW/LOS.npy'):
     Glos4 = np.concatenate((col1,col2),axis=1)
     return Glos1,Glos2,Glos3,Glos4
 
+def make_GlosZ(q,p,w,LosPath='/data/kdm95/WW/LOS.npy'):
+   
+    los1,los2,los3,los4 = np.load(LosPath)
+    los5 = np.load('lUAV.npy')
+    
+    col1 = los1[0]*q + los1[1]*w
+    col2 = los1[0]*w + los1[1]*p
+    col3 = np.ones((col1.shape[0],1))*los1[2]
+
+    Glos1 = np.concatenate((col1,col2,col3),axis=1)
+    
+    col1 = los2[0]*q + los2[1]*w
+    col2 = los2[0]*w + los2[1]*p
+    col3 = np.ones((col1.shape[0],1))*los2[2]
+    Glos2 = np.concatenate((col1,col2,col3),axis=1)
+    
+    col1 = los3[0]*q + los3[1]*w
+    col2 = los3[0]*w + los3[1]*p
+    col3 = np.ones((col1.shape[0],1))*los3[2]
+    Glos3 = np.concatenate((col1,col2,col3),axis=1)
+    
+    col1 = los4[0]*q + los4[1]*w
+    col2 = los4[0]*w + los4[1]*p
+    col3 = np.ones((col1.shape[0],1))*los4[2]
+    Glos4 = np.concatenate((col1,col2,col3),axis=1)
+    
+    col1 = los5[0]*q + los5[1]*w
+    col2 = los5[0]*w + los5[1]*p
+    col3 = np.ones((col1.shape[0],1))*los5[2]
+    GlosUAV = np.concatenate((col1,col2,col3),axis=1)
+    
+    return Glos1,Glos2,Glos3,Glos4,GlosUAV
+
+def make_GlosZ2(q,p,w,LosPath='/data/kdm95/WW/LOS.npy'):
+   # this is if you're doing the  inversion as a single step rather thatn windowed
+   # this one doesn't solve for the Z component
+    los1,los2,los3,los4 = np.load(LosPath)
+    # Make design matrix Glos1
+    col1 = los1[0]*q + los1[1]*w
+    col2 = los1[0]*w + los1[1]*p
+    col3 = np.eye((col1.shape[0]))*los1[2]
+    Glos1 = np.concatenate((col1,col2,col3),axis=1)
+    
+    col1 = los2[0]*q + los2[1]*w
+    col2 = los2[0]*w + los2[1]*p
+    col3 = np.eye((col1.shape[0]))*los2[2]
+    Glos2 = np.concatenate((col1,col2,col3),axis=1)
+    
+    col1 = los3[0]*q + los3[1]*w
+    col2 = los3[0]*w + los3[1]*p
+    col3 = np.eye((col1.shape[0]))*los3[2]
+    Glos3 = np.concatenate((col1,col2,col3),axis=1)
+    
+    col1 = los4[0]*q + los4[1]*w
+    col2 = los4[0]*w + los4[1]*p
+    col3 = np.eye((col1.shape[0]))*los4[2]
+    Glos4 = np.concatenate((col1,col2,col3),axis=1)
+    return Glos1,Glos2,Glos3,Glos4
+
+
 def make_greens(Glos1,Glos2,Glos3,Glos4,alphax,alphay):
     e = np.eye(Glos1.shape[1])
     dime = len(e)
     e[0:int(dime/2),0:int(dime/2)] = e[0:int(dime/2),0:int(dime/2)]*alphax
     e[int(dime/2):,int(dime/2):] = e[int(dime/2):,int(dime/2):]*alphay
+    e[:,-1] = 0 # This is so we don't damp Z
     GlosAll = np.concatenate((Glos1,Glos2,Glos3,Glos4),axis=0)
     GlosAlle = np.concatenate((Glos1,Glos2,Glos3,Glos4,e),axis=0)
+    Gg = np.dot( np.linalg.inv( np.dot( GlosAlle.T,GlosAlle )), GlosAll.T )
+    return GlosAll,GlosAlle,Gg
+
+def make_greensWhole(Glos1,Glos2,Glos3,Glos4,alphax,alphay):
+    e = np.eye(Glos1.shape[1])
+    dime = len(e)
+    e[0:int(dime/3),0:int(dime/3)] = e[0:int(dime/3),0:int(dime/3)]*alphax
+    e[int(dime/3):int(dime*(2/3)),int(dime/3):int(dime*(2/3))] =e[int(dime/3):int(dime*(2/3)),int(dime/3):int(dime*(2/3))]*alphay
+    e[int(dime*(2/3)):,int(dime*(2/3)):] =e[int(dime*(2/3)):,int(dime*(2/3)):]*0
+    GlosAll = np.concatenate((Glos1,Glos2,Glos3,Glos4),axis=0)
+    GlosAlle = np.concatenate((Glos1,Glos2,Glos3,Glos4,e),axis=0)
+    Gg = np.dot( np.linalg.inv( np.dot( GlosAlle.T,GlosAlle )), GlosAll.T )
+    return GlosAll,GlosAlle,Gg
+
+
+def make_greens2(Glos1,Glos2,alphax,alphay):
+    e = np.eye(Glos1.shape[1])
+    dime = len(e)
+    e[0:int(dime/2),0:int(dime/2)] = e[0:int(dime/2),0:int(dime/2)]*alphax
+    e[int(dime/2):,int(dime/2):] = e[int(dime/2):,int(dime/2):]*alphay
+    e[:,-1] = 0 # This is so we don't damp Z
+    GlosAll = np.concatenate((Glos1,Glos2),axis=0)
+    GlosAlle = np.concatenate((Glos1,Glos2,e),axis=0)
+    Gg = np.dot( np.linalg.inv( np.dot( GlosAlle.T,GlosAlle )), GlosAll.T )
+    return GlosAll,GlosAlle,Gg
+
+def make_greens3(Glos1,Glos2,Glos3,alphax,alphay):
+    e = np.eye(Glos1.shape[1])
+    dime = len(e)
+    e[0:int(dime/2),0:int(dime/2)] = e[0:int(dime/2),0:int(dime/2)]*alphax
+    e[int(dime/2):,int(dime/2):] = e[int(dime/2):,int(dime/2):]*alphay
+    e[:,-1] = 0 # This is so we don't damp Z
+    GlosAll = np.concatenate((Glos1,Glos2,Glos3),axis=0)
+    GlosAlle = np.concatenate((Glos1,Glos2,Glos3,e),axis=0)
+    Gg = np.dot( np.linalg.inv( np.dot( GlosAlle.T,GlosAlle )), GlosAll.T )
+    return GlosAll,GlosAlle,Gg
+
+def make_greens5(Glos1,Glos2,Glos3,Glos4,GlosUAV,alphax,alphay):
+    e = np.eye(Glos1.shape[1])
+    dime = len(e)
+    e[0:int(dime/2),0:int(dime/2)] = e[0:int(dime/2),0:int(dime/2)]*alphax
+    e[int(dime/2):,int(dime/2):] = e[int(dime/2):,int(dime/2):]*alphay
+    e[:,-1] = 0 # This is so we don't damp Z
+    GlosAll = np.concatenate((Glos1,Glos2,Glos3,Glos4,GlosUAV),axis=0)
+    GlosAlle = np.concatenate((Glos1,Glos2,Glos3,Glos4,GlosUAV,e),axis=0)
     Gg = np.dot( np.linalg.inv( np.dot( GlosAlle.T,GlosAlle )), GlosAll.T )
     return GlosAll,GlosAlle,Gg
