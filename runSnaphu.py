@@ -17,7 +17,7 @@ locals().update(params)
 geocode = False
 nproc='20'
 ntilerow='4'
-ntilecol='8'
+ntilecol='4'
 pair=params['pairs'][0]
 
 for pair in params['pairs']:
@@ -26,6 +26,7 @@ for pair in params['pairs']:
     outfile = params['intdir']+ '/' + pair+'/filt.unw'
     if not os.path.isfile(outfile):
         print('unwrapping ' + pair)
+        os.system('rm snaphu_tiles*')
         # The command line way doesn't work right now, so we'll use the config file
         #    cmd = '/home/insar/BIN/LIN/snaphu ' +  infile + ' ' + str(nxl) + ' -o ' + outfile + ' --mcf ' + ' -s --tile 30 30 80 80 --dumpall --nproc ' + nproc 
         #    os.system(cmd)
@@ -74,7 +75,7 @@ for pair in params['pairs']:
         conf.append('RMTMPTILE TRUE                                                    \n')
         with open(config_file_name,'w') as f:
             [f.writelines(c) for c in conf]
-        command = 'snaphu --mcf -S -f  ' + config_file_name 
+        command = 'snaphu --mcf -f  ' + config_file_name 
         os.system(command)
     else:
         print(outfile + ' already exists.')
