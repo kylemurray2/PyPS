@@ -18,7 +18,7 @@ import cv2
 import os
 
 filterFlag = True
-filterStrength = '0.2'
+filterStrength = '0.3'
 
 nblocks = 1
 
@@ -200,7 +200,7 @@ for pair in params['pairs']: #loop through each ifg and save to
             name = params['intdir'] + '/' + pair + '/fine_lk.int'
             corname = params['intdir'] + '/' + pair + '/cor.r4'
             offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/km/Software/isce/components/stack/stripmapStack/FilterAndCoherence.py -i ' + name + ' -c ' + corname +  ' -f ' +  offilt + ' -s ' + filterStrength
+            command = 'python /home/kdm95/Software/isce2/contrib/stack/stripmapStack/FilterAndCoherence.py -i ' + name + ' -c ' + corname +  ' -f ' +  offilt + ' -s ' + filterStrength
             os.system(command)
             
             
