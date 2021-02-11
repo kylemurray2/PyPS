@@ -24,6 +24,9 @@ import os
 from datetime import date
 
 makeChanges = False
+mincor = .7
+gamThresh = .5
+
 
 plt.close('all')
 params = np.load('params.npy',allow_pickle=True).item()
@@ -90,25 +93,25 @@ plt.figure();plt.plot(corAvg);plt.xlabel('time index');plt.ylabel('Correlation')
 plt.figure();plt.plot(ifgVar);plt.xlabel('time index');plt.ylabel('IFG variance')
 
 
-plt.figure()
-plt.plot(np.ravel(gam)[::10],np.ravel(np.nanmean(corStack,axis=0))[::10],'.',markersize = 1)
-plt.xlabel('Gamma 0');plt.ylabel('Average Correlation');plt.show()
+# plt.figure()
+# plt.plot(np.ravel(gam)[::10],np.ravel(np.nanmean(corStack,axis=0))[::10],'.',markersize = 1)
+# plt.xlabel('Gamma 0');plt.ylabel('Average Correlation');plt.show()
 
 corAvgMap = np.nanmean(corStack,axis=0)
 corVar = np.nanvar(corStack,axis=0)
 plt.figure();plt.imshow(corAvgMap);plt.title('Average Correlation')
 plt.figure();plt.imshow(corVar);plt.title('Correlation Variance')
 
-a = np.zeros(gam.shape)
-a[np.where((corAvgMap<0.6)&(corVar>.04))] = 1
-plt.figure();plt.imshow(a)
+# a = np.zeros(gam.shape)
+# a[np.where((corAvgMap<0.6)&(corVar>.04))] = 1
+# plt.figure();plt.imshow(a)
 
-plt.figure()
-plt.plot(np.ravel(np.nanmean(corStack,axis=0))[::10],np.ravel(np.nanvar(corStack,axis=0))[::10],'.',markersize = 1)
-plt.xlabel('Average Correlation');plt.ylabel('Correlation variance');plt.show()
+# plt.figure()
+# plt.plot(np.ravel(np.nanmean(corStack,axis=0))[::10],np.ravel(np.nanvar(corStack,axis=0))[::10],'.',markersize = 1)
+# plt.xlabel('Average Correlation');plt.ylabel('Correlation variance');plt.show()
 
 # Find the bad dates
-gamThresh = np.nanmedian(gam) - 0.5*np.nanstd(gam)
+# gamThresh = np.nanmedian(gam) - 2*np.nanstd(gam)
 corThresh = .4#np.nanmean(corAvgMap) -2*np.nanstd(corAvgMap)
 ifgVarThresh = np.nanmean(ifgVar) + np.nanstd(ifgVar)
 badPairs = np.where((corAvg<corThresh) | (ifgVar>ifgVarThresh))[0]
@@ -152,13 +155,15 @@ plt.figure();plt.plot(dateVar);plt.xlabel('time index');plt.ylabel('Date varianc
 # Make the mask msk
 msk = np.ones(gam.shape)
 msk[gam<gamThresh] = 0
-msk[np.nanmean(corStack,axis=0)<.45] = 0
+msk[np.nanmean(corStack,axis=0)<mincor] = 0
 msk[np.isnan(gam)] = 0
 plt.figure();plt.imshow(msk);plt.title('mask')
 np.save('msk.npy',msk)
 
 print('\n The bad dates might be: \n')
 print(badDates)
+
+plt.figure();plt.imshow(msk)
 
 if makeChanges == True:    
     val = input("Do you want to move these dates and redifine params? [y/n]: ")
