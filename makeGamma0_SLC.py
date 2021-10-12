@@ -21,8 +21,8 @@ import os
 import time
 #from mroipac.filter.Filter import Filter
 
-overwrite =True
-
+overwrite =False
+plot = False
 params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 dates = params['dates']
@@ -45,6 +45,30 @@ slcImage.load(f + '.xml')
 intimg = isceobj.createIntImage()
 intimg.width = slcImage.width
 intimg.length = slcImage.length
+
+fSizes = []
+for ii,d in enumerate(dates[:-1]): 
+    if os.path.isfile(params['slcdir'] + '/' + d + '/fine_diff.int'):   
+        if os.path.getsize(params['slcdir'] + '/' + d + '/fine_diff.int') ==0:
+            os.system('rm ' + params['slcdir'] + '/' + d + '/fine*')
+        else:
+            fSizes.append(os.path.getsize(params['slcdir'] + '/' + d + '/fine_diff.int'))
+medSize = np.nanmedian(fSizes)
+
+
+# for ii,d in enumerate(dates[:-1]): 
+#     if os.path.isfile(params['slcdir'] + '/' + d + '/fine_diff.int'):       
+#         if os.path.getsize(params['slcdir'] + '/' + d + '/fine_diff.int') < medSize:
+#             os.system('rm ' + params['slcdir'] + '/' + d + '/fine*')
+#             print('removed ' + params['slcdir'] + '/' + d + '/fine_diff.int. File size too small. May be corrupt.' )
+
+# for ii,d in enumerate(dates[:-1]): 
+#     if os.path.isfile(params['slcdir'] + '/' + d + '/' + d + '.slc.full'):       
+#         if os.path.getsize(params['slcdir'] + '/' + d + '/' + d + '.slc.full') < medSize:
+#             # os.system('rm ' + params['slcdir'] + '/' + d + '/fine*')
+#             print('removed ' + params['slcdir'] + '/' + d + '/.slc.full. File size too small. May be corrupt.' )
+#     else:
+#         print(d + '/.slc.full does not exist')
 
 #ii=0
 #d = dates[ii]
@@ -140,11 +164,11 @@ out.dump(out.filename + '.xml') # Write out xml
 gamma0.tofile(out.filename) # Write file out
 
 #gamma0 *= np.sqrt(gamma0)
-
-plt.imshow(gamma0)
-plt.figure()
-plt.hist( gamma0.flatten()[~np.isnan(gamma0.flatten())], 40, edgecolor='black', linewidth=.2)
-plt.title('Phase stability histogram')
-plt.xlabel('Phase stability (1 is good, 0 is bad)')
-plt.show()
+if plot:
+    plt.imshow(gamma0)
+    plt.figure()
+    plt.hist( gamma0.flatten()[~np.isnan(gamma0.flatten())], 40, edgecolor='black', linewidth=.2)
+    plt.title('Phase stability histogram')
+    plt.xlabel('Phase stability (1 is good, 0 is bad)')
+    plt.show()
 
