@@ -14,7 +14,6 @@ work in progress
 import numpy as np
 import isceobj
 from matplotlib import pyplot as plt
-from mpl_toolkits.basemap import Basemap
 import cv2
 import os
 
@@ -33,10 +32,10 @@ seaLevel=-10
 
 tsdir = params['tsdir']
 
-cropymin = 298
-cropymax = 1784
-cropxmin = 2868
-cropxmax = 6352
+cropymin = int(cropymin/alks)
+cropymax = int(cropymax/alks)
+cropxmin = int(cropxmin/rlks)
+cropxmax = int(cropxmax/rlks)
 
 nyl2 = cropymax-cropymin
 nxl2 = cropxmax-cropxmin
