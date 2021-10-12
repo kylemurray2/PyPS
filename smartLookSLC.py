@@ -200,7 +200,7 @@ for pair in params['pairs']: #loop through each ifg and save to
             name = params['intdir'] + '/' + pair + '/fine_lk.int'
             corname = params['intdir'] + '/' + pair + '/cor.r4'
             offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/kdm95/Software/isce2/contrib/stack/stripmapStack/FilterAndCoherence.py -i ' + name + ' -c ' + corname +  ' -f ' +  offilt + ' -s ' + filterStrength
+            command = 'python /home/km/Software/test/isce2/contrib/stack/topsStack/FilterAndCoherence.py -i ' + name + ' -c ' + corname +  ' -f ' +  offilt + ' -s ' + filterStrength
             os.system(command)
             
             
