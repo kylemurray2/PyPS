@@ -24,8 +24,8 @@ import os
 from datetime import date
 
 makeChanges = False
-mincor = .7
-gamThresh = .5
+mincor = .45
+gamThresh = .45
 
 
 plt.close('all')
@@ -38,9 +38,7 @@ locals().update(geom)
 nxl = params['nxl']
 nyl = params['nyl']
 
-hgt_ifg = hgt_ifg
-lon_ifg = lon_ifg
-lat_ifg = lat_ifg
+
 # MASKING______________________________
 gam = np.load('gam.npy')
 gam[gam==0] = np.nan
@@ -101,7 +99,7 @@ corAvgMap = np.nanmean(corStack,axis=0)
 corVar = np.nanvar(corStack,axis=0)
 plt.figure();plt.imshow(corAvgMap);plt.title('Average Correlation')
 plt.figure();plt.imshow(corVar);plt.title('Correlation Variance')
-
+np.save('cor.npy',corAvgMap)
 # a = np.zeros(gam.shape)
 # a[np.where((corAvgMap<0.6)&(corVar>.04))] = 1
 # plt.figure();plt.imshow(a)
@@ -149,8 +147,8 @@ for ii in np.arange(0,len(dn)):
 dateVar = np.asarray(dateVar,dtype=np.float32)
 plt.figure();plt.plot(dateVar);plt.xlabel('time index');plt.ylabel('Date variance (average of associated ifgs')
 
-
-
+plt.figure();plt.imshow(gam,vmin=.45,vmax=.5)
+plt.figure();plt.imshow(np.nanmean(corStack,axis=0))
 
 # Make the mask msk
 msk = np.ones(gam.shape)
