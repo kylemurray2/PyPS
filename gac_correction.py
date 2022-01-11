@@ -8,78 +8,112 @@ Created on Fri Aug 31 12:37:39 2018
 # Global Imports
 import numpy as np
 import isceobj
+from osgeo import gdal
 import pickle
 import os
 import cv2
-from mpl_toolkits.basemap import Basemap
 from matplotlib import pyplot as plt
 import scipy.spatial.qhull as qhull
-import glob
-import makeMap
-
+from scipy.interpolate import griddata
+import util
+import requests
+import pandas as pd
 # Local Imports
-from Statistics import structure_function
 #from APS_tools import ifg
 
+# Load stuff
+params = np.load('params.npy',allow_pickle=True).item()
+locals().update(params)
+geom = np.load('geom.npy',allow_pickle=True).item()
+locals().update(geom)
 
-with open(tsdir + 'params.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
-    pairs,nd,lam,workdir,intdir,tsdir,ny,nx,nxl,nyl,lon_bounds,lat_bounds,ymin,ymax,alks,rlks = pickle.load(f)   
+dataDir = workdir + '/GACOS/'
 
-do_wrapped = 2 # 1 if you want to apply correction to wrapped data. 0 for unwrapped. 
+do_wrapped =2 # 1 if you want to apply correction to wrapped data. 0 for unwrapped. 
 
-lon_gac_min=-119
-lon_gac_max=-116
-lat_gac_min=33
-lat_gac_max=35
+minlat=np.floor(lat_ifg.min())
+maxlat=np.ceil(lat_ifg.max())
+minlon=np.floor(lon_ifg.min())
+maxlon=np.ceil(lon_ifg.max())
 
-xdim_gac = 3601
-ydim_gac = 2401
-gac_lon_vec = np.linspace(lon_gac_min, lon_gac_max, xdim_gac)
-gac_lat_vec = np.linspace(lat_gac_min, lat_gac_max, ydim_gac)
+path = os.getcwd().split('/')[-2]
+frame= os.getcwd().split('/')[-1]
+
+def getTime(path,frame):
+    
+    '''
+     Figure out what time the aquisition was
+    '''
+    start='2020-05-01T00:00:00Z'
+    end='2021-06-01T00:00:00Z'
+    asfUrl = 'https://api.daac.asf.alaska.edu/services/search/param?platform=SENTINEL-1&processinglevel=SLC&output=CSV'
+    call = asfUrl + '&relativeOrbit=' + path + '&frame=' + frame + '&start=' + start + '&end=' + end
+    # Here we'll make a request to ASF API and then save the output info to .CSV file
+    if not os.path.isfile('out.csv'):
+        r =requests.get(call,timeout=100)
+        with open('out.csv','w') as j:
+            j.write(r.text)
+    # Open the CSV file and get the URL and File names
+    hour = pd.read_csv('out.csv')["Start Time"][0][11:13]
+    minute = pd.read_csv('out.csv')["Start Time"][0][14:16]
+    return int(hour),int(minute)
+   
+hour,minute = getTime(path,frame)
+timee =hour+round(minute/60,2)
+
+# email = 'murray8@hawaii.edu'
+email = 'bXVycmF5OEBoYXdhaWkuZWR1'
+#Request gacos from API?
+url = 'http://www.gacos.net/result.php?flag=MQ==&email='+email+'&'
+boundURL = 'S='+str(minlat)+'&N='+str(maxlat)+'&W='+str(minlon)+'&E='+str(maxlon)+'&'
+timeURL = 'time_of_day='+str(timee)+'&type=2&date='
+
+dstr = dates[21]
+for d in dates[22:]:
+    dstr+='-'
+    dstr+=d
+    
+requestURL = url + boundURL + timeURL + dstr
+# r =requests.get(requestURL,timeout=100)
+
+
+print(requestURL)
+
+
+
+# Read one of the rsc files
+fname = dataDir + dates[0] +'.ztd.tif'
+data = gdal.Open(fname, gdal.GA_ReadOnly)
+nxg = int(data.RasterXSize)
+nyg = int(data.RasterYSize )
+geoTransform = data.GetGeoTransform()
+lon_gac_min = geoTransform[0]
+lat_gac_max = geoTransform[3]
+lon_gac_max = lon_gac_min + geoTransform[1] * nxg
+lat_gac_min = lat_gac_max + geoTransform[5] * nyg
+print([lon_gac_min, lat_gac_max, lon_gac_max, lat_gac_min])
+
+
+gac_lon_vec = np.linspace(lon_gac_min, lon_gac_max, int(nxg))
+gac_lat_vec = np.linspace(lat_gac_min, lat_gac_max, int(nyg))
 
 gac_lat,gac_lon = np.meshgrid(gac_lat_vec, gac_lon_vec, sparse=False, indexing='ij')
 gac_lat = np.flipud(gac_lat)
 
-mergeddir=workdir + 'merged/'
-f_lat = mergeddir + 'geom_master/lat_lk.rdr'
-f_lon = mergeddir + 'geom_master/lon_lk.rdr'
-f_los = mergeddir + 'geom_master/los_lk.rdr'
+#Aminlat = 35.9
+#Amaxlat = 36.8
+#Aminlon = -96.97
+#Amaxlon = -96.0
+#gid1,gid2 = np.where((gac_lon>Aminlon) & (gac_lon<Amaxlon) & (gac_lat>Aminlat) & (gac_lat<Amaxlat))
+#
+#gac_lon=gac_lon[gid1.min():gid1.max(),gid2.min():gid2.max()]
+#gac_lat=gac_lat[gid1.min():gid1.max(),gid2.min():gid2.max()]
+#
+#id1,id2 = np.where((lon_ifg>Aminlon) & (lon_ifg<Amaxlon) & (lat_ifg>Aminlat) & (lat_ifg<Amaxlat))
+#lon_ifg = lon_ifg[id1.min():id1.max(),id2.min():id2.max()]
+#lat_ifg = lat_ifg[id1.min():id1.max(),id2.min():id2.max()]
 
-
-Image = isceobj.createImage()
-Image.load(f_lon + '.xml')
-lon_ifg = Image.memMap()[ymin:ymax,:,0]
-lon_ifg = lon_ifg.copy().astype(np.float32)
-lon_ifg[lon_ifg==0]=np.nan
-Image.finalizeImage()
-
-Image = isceobj.createImage()
-Image.load(f_lat + '.xml')
-lat_ifg = Image.memMap()[ymin:ymax,:,0]
-lat_ifg = lat_ifg.copy().astype(np.float32)
-lat_ifg[lat_ifg==0]=np.nan
-Image.finalizeImage()
-
-Image = isceobj.createImage()
-Image.load(f_los + '.xml')
-los_ifg = Image.memMap()[ymin:ymax,0,:]
-los_ifg = los_ifg.copy().astype(np.float32)
-los_ifg[los_ifg==0]=np.nan
-Image.finalizeImage()
-los_ifg = np.deg2rad(los_ifg) # inc angle in radians from earth looking to platform wrt vertical
-
-f = tsdir + 'gamma0_lk.int'
-intImage = isceobj.createIntImage()
-intImage.load(f + '.xml')
-gamma0_lk= intImage.memMap()[ymin:ymax,:,0]
-
-dates=list()
-flist = glob.glob(intdir + '2*_2*')
-[dates.append(f[-17:-9]) for f in flist]
-dates.append(flist[-1][-8:])
-dates.sort()
-
-if not os.path.isfile(workdir +  'GACOS/gac_stack.pkl'):
+if not os.path.isfile(workdir +  'GACOS/gac_stack.npy'):
     # Make some functions for the grid interpolation
     def interp_weights(xy, uv,d=2):
         tri = qhull.Delaunay(xy)
@@ -102,25 +136,31 @@ if not os.path.isfile(workdir +  'GACOS/gac_stack.pkl'):
         print('gridding gacos to ' + pairs[ii])
         date1 = dates[ii];
         date2 =dates[ii+1]
-        gf1 = workdir + 'GACOS/' + date1 + '.ztd'
-        gf2 = workdir + 'GACOS/' + date2 + '.ztd' 
-        gac1 = np.fromfile(gf1,dtype=np.float32)
-        gac2 = np.fromfile(gf2,dtype=np.float32)
+        gf1 = dataDir + date1 + '.ztd.tif'
+        gf2 = dataDir + date2 + '.ztd.tif' 
+        gactmp1 = gdal.Open(gf1, gdal.GA_ReadOnly)
+        gac1 = gactmp1.GetRasterBand(1).ReadAsArray()
+        gactmp2 = gdal.Open(gf2, gdal.GA_ReadOnly)
+        gac2 = gactmp2.GetRasterBand(1).ReadAsArray()
         gac = gac2-gac1
         gac = np.asarray(gac, dtype=np.float32)
-    #    gac_grid =griddata((gac_lon.flatten(),gac_lat.flatten()),gac.flatten(), (lon_ifg,lat_ifg), method='linear')
+        
+        gac_grid2 =griddata((gac_lon.flatten(),gac_lat.flatten()),gac2.flatten(), (lon_ifg,lat_ifg), method='linear')
         gac_grid=interpolate(gac, vtx, wts)
         gac_grid[gac_grid==0]=np.nan
-        gac_grid = np.reshape(gac_grid,(len(np.arange(ymin,ymax)),nxl))
+        gac_grid = np.reshape(gac_grid,lon_ifg.shape)
         gac_grid=np.asarray(gac_grid,dtype=np.float32)
         gac_grid-=np.nanmean(gac_grid)
         gac_stack.append(gac_grid)
+    
+    np.save(dataDir + 'gac_stack.npy', gac_stack)
+    gac_coords = [];gac_coords.append(lon_ifg);gac_coords.append(lat_ifg)
+    np.save(dataDir + 'gac_coords.npy', gac_coords)
+
 else:
-    print(workdir +  'GACOS/gac_stack.pkl already exists. Loading it...')
-    with open(workdir +  'GACOS/gac_stack.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
-        gac_stack = pickle.load(f) 
-with open(workdir +  'GACOS/gac_stack.pkl', 'wb') as f:  # Python 3: open(..., 'wb')
-    pickle.dump(gac_stack, f)
+    print(dataDir + 'gac_stack.npy already exists. Loading it...')
+    gac_stack = np.load(dataDir + 'gac_stack.npy')
+
 
 if do_wrapped==1:
     # Load ifg and correct for wrapped data
@@ -187,7 +227,7 @@ if do_wrapped==0:
         Image.finalizeImage()
         plt.imshow(phs_ifg)
 #        phs_ifg-=np.nanmedian(phs_ifg)
-        gac = ((gac_stack[ii]*100)/np.cos(los_ifg))
+        gac = ((gac_stack[ii]*100)/np.cos(np.deg2rad(los_ifg)))
 #        gac-=np.nanmedian(gac)
         phs_c[ymin:ymax,:] = phs_ifg-gac
         phs_c-=np.nanmedian(phs_c)
@@ -199,17 +239,15 @@ if do_wrapped==0:
         phs_c.tofile(out.filename) # Write file out
         out.finalizeImage()
 
-h = workdir + 'merged/geom_master/hgt_lk.rdr'
-hImg = isceobj.createImage()
-hImg.load(h + '.xml')
-hgt = hImg.memMap()[ymin:ymax,:,0].astype(np.float32)
 
-ymin2=84
-ymax2=2575
-xmin=35
-xmax=6320
-crop_mask = np.zeros(hgt.shape)
-crop_mask[ymin2:ymax2,xmin:xmax] =1
+hgt = hgt_ifg
+
+# ymin2=84
+# ymax2=2575
+# xmin=35
+# xmax=6320
+# crop_mask = np.zeros(hgt.shape)
+# crop_mask[ymin2:ymax2,xmin:xmax] =1
 
 # Load example
 # Load phs
@@ -221,7 +259,7 @@ Image.load(f + '.xml')
 phs_ifg = Image.memMap()[ymin:ymax,:,0]
 phs_ifg = phs_ifg.copy().astype(np.float32)*lam/(4*np.pi)*100
 Image.finalizeImage()
-phs_ifg*=crop_mask
+# phs_ifg*=crop_mask
 phs_ifg[phs_ifg==0]=np.nan
 phs_ifg[np.where( (hgt<.1) ) ]=np.nan # masks the water
 phs_ifg-=np.nanmedian(phs_ifg)
@@ -232,13 +270,13 @@ Image = isceobj.createImage()
 Image.load(f + '.xml')
 phs_c = Image.memMap()[ymin:ymax,:,0]
 phs_c = phs_c.copy().astype(np.float32)
-phs_c*=crop_mask
+# phs_c*=crop_mask
 phs_c[phs_c==0]=np.nan
 phs_c[np.where( (hgt<.1) ) ]=np.nan # masks the water
 
 # Load gac model
-gac_mod = (gac_stack[idx]*100)/np.cos(los_ifg)
-gac_mod*=crop_mask
+gac_mod = (gac_stack[idx]*100)/np.cos(np.deg2rad(los_ifg))
+# gac_mod*=crop_mask
 gac_mod[gac_mod==0]=np.nan
 gac_mod[np.where( (hgt<.1) ) ]=np.nan # masks the water
 gac_mod-=np.nanmedian(gac_mod)
@@ -253,12 +291,14 @@ ax.set_title('model')
 ax =  fig.add_subplot(4,1,3);plt.imshow(phs_c,vmin=vmin,vmax=vmax)
 ax.set_title('corrected ifg')
 
-
-# MAKE MAPS
 pad=0
-makeMap.makeImg(phs_ifg,lon_ifg,lat_ifg,vmin,vmax,pad,'Original IFG (cm)')
-makeMap.makeImg(gac_mod,lon_ifg,lat_ifg,vmin,vmax,pad,'Modeled Tropospheric delay (cm)')
-makeMap.makeImg(phs_c,lon_ifg,lat_ifg,vmin,vmax,pad,'Corrected IFG (cm)')
+
+
+mapImg(phs_ifg, lon_ifg, lat_ifg, vmin, vmax, pad,10, 'Original IFG (cm)')
+mapImg(gac_mod, lon_ifg, lat_ifg, vmin, vmax, pad,10, 'Original IFG (cm)')
+mapImg(phs_c, lon_ifg, lat_ifg, vmin, vmax, pad,10, 'Original IFG (cm)')
+
+# plt.savefig(workdir + 'Figs/GACOS_correction.png',transparent=True,dpi=300 )
 
 ## Load example
 ## Load phs
@@ -302,7 +342,5 @@ plt.title('Structure Function ' + pair)
 plt.ylabel('RMS of phase difference between pixels (cm)')
 plt.xlabel('Distance between pixels(km)')
 plt.legend(['Original IFG','Corrected IFG'],loc='upper left')
-plt.savefig(workdir + 'Figs/GACOS_structfun.svg',transparent=True,dpi=100 )
-
-
+# plt.savefig(workdir + 'Figs/GACOS_structfun.svg',transparent=True,dpi=100 )
 
