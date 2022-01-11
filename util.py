@@ -6,20 +6,21 @@ Created on Mon Dec 28 21:54:12 2020
 @author: kdm95
 """
 import numpy as np
-# from astropy.convolution import Gaussian2DKernel
-# from astropy.convolution import convolve
-
 
 def getTime(path,frame):
     '''
      Figure out what time the aquisition was
     '''
-    
+    import os
+    import requests
+    import pandas as pd
+    path = str(path)
+    frame = str(frame)
     # path = os.getcwd().split('/')[-2]
     # frame= os.getcwd().split('/')[-1]
 
-    start='2020-05-01T00:00:00Z'
-    end='2021-06-01T00:00:00Z'
+    start='2014-05-01T00:00:00Z'
+    end='2099-06-01T00:00:00Z'
     asfUrl = 'https://api.daac.asf.alaska.edu/services/search/param?platform=SENTINEL-1&processinglevel=SLC&output=CSV'
     call = asfUrl + '&relativeOrbit=' + path + '&frame=' + frame + '&start=' + start + '&end=' + end
     # Here we'll make a request to ASF API and then save the output info to .CSV file
@@ -82,6 +83,7 @@ def reGrid(inputImageStack,outputX,outputY):
         
     return outputStack
     
+
 def improfile(z, x0, y0, x1, y1):
     """
     Get a profile
@@ -97,29 +99,50 @@ def improfile(z, x0, y0, x1, y1):
     return zi
 
 
-def ll2pixel(lon_mat,lat_mat,lon_pts,lat_pts):
+def ll2pixel(lon_ifg,lat_ifg,lon,lat):
     """
     Output the pixels (radar coords) given the lat/lon matrices and arrays of 
     lat/lon points.
     """
     x_pts = list()
     y_pts = list()
-    for ii in np.arange(0,len(lat_pts)):
-        a = abs(lat_mat-lat_pts[ii])
-        b = abs(lon_mat-lon_pts[ii])
+    
+    if np.nanmean(lon_ifg) * lon[0] <0:
+        print('WARNING: you may need to subtract 360')
+        
+    for ii in np.arange(0,len(lat)):
+        a = abs(lat_ifg-lat[ii])
+        b = abs(lon_ifg-lon[ii])
         c = a+b
         y,x = np.where(c==c.min()) # y is rows, x is columns
+        
+        if not np.isscalar(x):
+            x=x[0];y=y[0]
+        
         x_pts.append(x)
         y_pts.append(y)
-    return x_pts,y_pts 
+    return y_pts,x_pts 
+
 
 # phase elevation model
-def phaseElev(img, hgt,msk, ymin, ymax, xmin, xmax):
+def phaseElev(img, hgt,msk, ymin, ymax, xmin, xmax,makePlot=False):
+    '''
+    Take the ifg or rate map and the dem and mask and outputs phs/elev dependence.
+    Use ymin, xmin, etc. if you want to only use a subset of the image.
+      otherwise, put the image len/width for those values.
+    '''
 #     img[np.isnan(img)] = 0
     
 #     hgt[np.isnan(hgt)] = 0
     p = img[ymin:ymax, xmin:xmax].copy()
     z = hgt[ymin:ymax, xmin:xmax].copy()
+    if makePlot:
+        from matplotlib import pyplot as plt
+        plt.figure();plt.scatter(z.ravel(),p.ravel(),.1)
+        plt.title('Phase-elevation dependence')
+        plt.xlabel('Elevation (m)')
+        plt.ylabel('Phase (rad)')
+        
     p[msk[ymin:ymax, xmin:xmax]==0] = 0
     z[msk[ymin:ymax, xmin:xmax]==0] = 0
     G = np.vstack([z.ravel(), np.ones((len(z.ravel()),1)).flatten()]).T
@@ -135,23 +158,25 @@ def px2ll(x, y, lon_ifgm,lat_ifgm):
     lat = lat_ifgm[y,x]
     return lon,lat
 
-def fitLong(image,order):
-    
+
+def fitLong(image,order,mask):
+    from astropy.convolution import Gaussian2DKernel,convolve
     kernel = Gaussian2DKernel(x_stddev=1) # For smoothing and nan fill
     image = convolve(image,kernel)
     image[np.isnan(image)] = 0
+    image[mask==0] = 0
     ny,nx = image.shape
     X,Y = np.meshgrid(range(nx),range(ny))
     X1,Y1 = X.ravel(),Y.ravel()
     
-    if order==1:
+    if order==1: # Plane
         G  = np.array([np.ones((len(X1),)), X1, Y1]).T
         Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
         mod   = np.dot(Gg,image.ravel())
         synth = mod[0] + mod[1] * X1 + mod[2] * Y1
         synth = synth.reshape(ny,nx)
             
-    if order==2:
+    if order==2: # Quadratic
         G  = np.array([np.ones((len(X1),)), X1, Y1, X1**2, Y1**2]).T
         Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
         mod   = np.dot(Gg,image.ravel())
@@ -175,6 +200,7 @@ def fitLong(image,order):
 
     return synth
 
+
 def json2bbox(file):
     '''
     Takes a json file (geojson) and returns the bounds of the associated rectangle
@@ -194,3 +220,328 @@ def json2bbox(file):
         
     bbox = [np.min(lons), np.min(lats), np.max(lons), np.max(lats)]    
     return bbox,lons,lats
+
+
+
+def struct_fun(data, ny,nx, tot=600, lengthscale=600, plot_flag=0, binwidth=20, fun=None):
+    '''
+    Main function to calculate structure function from a unwrapped ifg matrix (data)
+    
+    '''
+    import matplotlib.pyplot as plt
+    import scipy
+#    ny,nx = lon_ifg.shape
+    
+    xx = np.arange(0,nx);yy=np.arange(0,ny)
+    X,Y = np.meshgrid(xx,yy, sparse=False, indexing='ij')
+    
+    xd,yd = np.meshgrid([0,1,2,5,10,15,20,25,35,(lengthscale-binwidth),lengthscale],[-lengthscale, (-lengthscale+binwidth),-35,-25,-20,-15,-10,-5,-4,-2,-1,0,1,2,4,5,10,15,20,25,35,(lengthscale-binwidth),lengthscale], sparse=False, indexing='ij')  #dense sampling near origin
+
+    tx    =np.floor(np.random.randint(1,lengthscale,size=tot))
+    ty    =np.floor(np.random.randint(1,lengthscale,size=tot))
+    ty[::2] = -ty[::2] # Make half of points negative; start stop step
+    q=np.matrix([tx,ty]).T
+    
+    # Remove duplicates
+    jnk,ids = np.unique(q,axis=0,return_index=True)
+    tx = tx[ids]
+    tx = np.asarray([*map(int, tx)])
+    ty = ty[ids]
+    ty = np.asarray([*map(int, ty)])
+    
+    #***add on dense grid from above;
+    tx = np.append(tx, xd.flatten())
+    ty = np.append(ty, yd.flatten())
+    
+    #***remove duplicates
+#    a=np.array((tx,ty))
+#    ix = np.unique(a,return_index=True, axis=1);
+#    tx       = tx[ix[1]];
+#    ty       = ty[ix[1]];
+
+    aty = abs(ty) # used for the negative offsets
+    S = np.empty([len(tx)])
+#    S2 = np.empty([len(tx)])
+    allnxy = np.empty([len(tx)])
+    iters = np.arange(0,len(tx))
+    
+    for ii in iters:
+        i=int(ii)
+        if ty[ii] >= 0: 
+            A = data[1 : ny-ty[ii] , tx[ii] : nx-1 ]
+            B = data[ty[i] : ny-1 , 1 : nx-tx[i] ];
+        else:
+            A = data[aty[ii] : ny-1 , tx[ii] : nx-1]
+            B = data[1 : ny-aty[ii] , 1 : nx-tx[ii]]
+    
+        C = A-B # All differences
+        C2 = np.square(C)
+        
+        S[ii] = np.nanmean(C2)       
+#        S2[ii] = np.nanstd(C2)
+
+        allnxy[ii] = len(C2);
+    dists = np.sqrt(np.square(tx) + np.square(ty))
+    
+#    S[np.isnan(S)]=0
+    bins = np.arange(0,dists.max(),binwidth,dtype=int)
+    S_bins=list()
+#    S2_bins=list()
+    Ws = list()
+    dist_bins=list()
+    for ii,bin_min in enumerate(bins):
+        bin_ids = np.where((dists< (bin_min+binwidth)) & (dists>bin_min))
+        w = allnxy[bin_ids] #these are the weights for the weighted average
+        if len(w)==0:
+            S_bins.append(np.nan)  
+#            S2_bins.append(np.nan)
+            dist_bins.append(np.nan)
+        elif len(w)==1:
+            S_bins.append(S[bin_ids[0]])  
+#            S2_bins.append(S2[bin_ids[0]])  
+            dist_bins.append(np.nan)
+        else:
+            S_bins.append(np.average(S[bin_ids],axis=0,weights=w))  
+#            S2_bins.append(np.average(S2[bin_ids],axis=0,weights=w))  
+            Ws.append(len(w))
+            dist_bins.append(np.nanmean(dists[bin_ids]))
+    
+    if plot_flag:
+        fig = plt.figure(figsize=(14,10))
+        # Plot IFG
+        ax = fig.add_subplot(221)
+        ax.set_title("Image")
+        cf = plt.imshow(data)
+        #cmap=plt.cm.Spectral.reversed()
+        plt.colorbar(cf)
+        
+        ax = fig.add_subplot(222)
+        ax.set_title("sqrt(S) vs. position")
+        cf = plt.scatter(tx,ty,c=np.sqrt(S))
+        plt.scatter(-tx,-ty,c=np.sqrt(S))
+        plt.ylabel('north')
+        plt.xlabel('east')
+        plt.colorbar(cf)
+        
+        ax = fig.add_subplot(212)
+        ax.set_title("S vs. distance, colored by num points")
+        cf = plt.scatter(dists[1:],np.sqrt(S[1:]),c=allnxy[1:])
+        plt.ylabel('sqrt(S), units of cm')
+        plt.xlabel('distance(km)')
+        plt.colorbar(cf)
+        plt.show()
+        
+        
+    # Fit a log function to the binned data   
+#    S_bins = np.asarray(S_bins)
+#    S_bins[np.where(np.isnan(S_bins))]=0
+    xd = np.asarray(dist_bins)
+    oh=np.asarray(S_bins,dtype=np.float32)/2
+#    oh[np.isnan(oh)]=0
+    yd = np.sqrt(oh)
+#    yd_std = np.sqrt(S2_bins) 
+    yd[np.isnan(yd)]=0
+#    yd_std[np.isnan(yd_std)]=0
+
+    
+    # Fit exponential function to structure function
+    # y = A*log(Bx)
+    if fun=='exp':
+        def fit_log(x,a,b,c):
+            '''
+            Spherical model of the semivariogram
+            '''
+            return a*np.log(b*x)+c
+    
+        popt, pcov = scipy.optimize.curve_fit(fit_log,xd,yd)
+        sf_fit = fit_log(xd, *popt)
+        
+        
+    elif fun=='spherical': 
+        def spherical(x, a, b ):
+            '''
+            Spherical model of the semivariogram
+            '''
+            return b*( 1.5*x/a - 0.5*(x/a)**3.0 )
+        
+        popt, pcov = scipy.optimize.curve_fit(spherical,xd,yd)
+        sf_fit = spherical(xd, *popt)
+    
+    else:
+        print('No function specified. Can be spherical or exp.')
+        sf_fit=0
+    
+    S2=0
+    yd_std=0
+    return np.sqrt(S/2), S2, dists, allnxy, yd, yd_std, xd, sf_fit
+
+
+def estimate_dem_error(ts0, G0, tbase, date_flag=None, phase_velocity=False):
+    """Estimate DEM error with least square optimization.
+    Parameters: ts0            - 2D np.array in size of (numDate, numPixel), original displacement time-series
+                G0             - 2D np.array in size of (numDate, numParam), design matrix in [G_geom, G_defo]
+                tbase          - 2D np.array in size of (numDate, 1), temporal baseline
+                date_flag      - 1D np.array in bool data type, mark the date used in the estimation
+                phase_velocity - bool, use phase history or phase velocity for minimization
+    Returns:    delta_z        - 2D np.array in size of (1,       numPixel) estimated DEM residual
+                ts_cor         - 2D np.array in size of (numDate, numPixel),
+                                    corrected timeseries = tsOrig - delta_z_phase
+                ts_res         - 2D np.array in size of (numDate, numPixel),
+                                    residual timeseries = tsOrig - delta_z_phase - defModel
+    Example:    delta_z, ts_cor, ts_res = estimate_dem_error(ts, G, tbase, date_flag)
+    """
+    import scipy
+    if len(ts0.shape) == 1:
+        ts0 = ts0.reshape(-1, 1)
+    if date_flag is None:
+        date_flag = np.ones(ts0.shape[0], np.bool_)
+
+    # Prepare Design matrix G and observations ts for inversion
+    G = G0[date_flag, :]
+    ts = ts0[date_flag, :]
+    if phase_velocity:
+        tbase = tbase[date_flag, :]
+        G = np.diff(G, axis=0) / np.diff(tbase, axis=0)
+        ts = np.diff(ts, axis=0) / np.diff(tbase, axis=0)
+
+    # Inverse using L-2 norm to get unknown parameters X
+    # X = [delta_z, constC, vel, acc, deltaAcc, ..., step1, step2, ...]
+    # equivalent to X = np.dot(np.dot(np.linalg.inv(np.dot(G.T, G)), G.T), ts)
+    #               X = np.dot(np.linalg.pinv(G), ts)
+    X = scipy.linalg.lstsq(G, ts, cond=1e-15)[0]
+
+    # Prepare Outputs
+    delta_z = X[0, :]
+    ts_cor = ts0 - np.dot(G0[:, 0].reshape(-1, 1), delta_z.reshape(1, -1))
+    ts_res = ts0 - np.dot(G0, X)
+
+    # for debug
+    debug_mode = False
+    if debug_mode:
+        import matplotlib.pyplot as plt
+        fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=4, ncols=1, figsize=(8, 8))
+        ts_all = np.hstack((ts0, ts_res, ts_cor))
+        ymin = np.min(ts_all)
+        ymax = np.max(ts_all)
+        ax1.plot(ts0, '.');           ax1.set_ylim((ymin, ymax)); ax1.set_title('Original  Timeseries')
+        ax2.plot(ts_cor, '.');        ax2.set_ylim((ymin, ymax)); ax2.set_title('Corrected Timeseries')
+        ax3.plot(ts_res, '.');        ax3.set_ylim((ymin, ymax)); ax3.set_title('Fitting Residual')
+        ax4.plot(ts_cor-ts_res, '.'); ax4.set_ylim((ymin, ymax)); ax4.set_title('Fitted Deformation Model')
+        plt.show()
+
+    return delta_z, ts_cor, ts_res
+
+
+def viewIFGstack(flip=True):
+    ''' look at all the ifgs with napari'''
+    
+    import numpy as np
+    import isceobj
+    import napari
+    
+    params = np.load('params.npy',allow_pickle=True).item()
+    
+    stack = np.zeros((len(params['pairs']),params['nyl'],params['nxl']))
+    for ii in range(len(params['pairs'])):
+        p = params['pairs'][ii]
+        f = './merged/interferograms/' + p + '/fine_lk_filt.int'
+        intImage = isceobj.createIntImage()
+        intImage.load(f + '.xml')
+        ifg = intImage.memMap()[:,:,0] 
+        ifgc = np.angle(ifg)
+        if flip:
+            stack[ii,:,:] = np.flipud(ifgc)
+        else:
+            stack[ii,:,:] = ifgc
+    viewer = napari.view_image(stack,colormap='RdYlBu')
+
+
+def viewUNWstack(flip=True):
+    ''' look at all the ifgs with napari'''
+    
+    import numpy as np
+    import isceobj
+    import napari
+    
+    params = np.load('params.npy',allow_pickle=True).item()
+    gam = np.load('gam.npy')
+    
+    stack = np.zeros((len(params['pairs2']),params['nyl'],params['nxl']))
+    for ii in range(len(params['pairs2'])):
+        p = params['pairs'][ii]
+        f = './merged/interferograms/' + p + '/filt.unw'
+        intImage = isceobj.createImage()
+        intImage.dataType='FLOAT'
+        intImage.load(f + '.xml')
+        unw = intImage.memMap()[:,:,0]
+        unw = unw.copy()
+        unw[gam==0] = 0
+        if flip:
+            stack[ii,:,:] = np.flipud(unw)
+        else:
+            stack[ii,:,:] = unw
+    viewer = napari.view_image(stack,colormap='RdYlBu')
+
+
+def viewCORstack(flip=True):
+    ''' look at all the ifgs with napari'''
+    
+    import numpy as np
+    import isceobj
+    import napari
+    
+    params = np.load('params.npy',allow_pickle=True).item()
+    gam = np.load('gam.npy')
+    
+    stack = np.zeros((len(params['pairs']),params['nyl'],params['nxl']))
+    for ii in range(len(params['pairs'])):
+        p = params['pairs'][ii]
+        f = './merged/interferograms/' + p + '/cor_lk.r4'
+        intImage = isceobj.createImage()
+        intImage.dataType='FLOAT'
+        intImage.load(f + '.xml')
+        unw = intImage.memMap()[:,:,0]
+        unw = unw.copy()
+        unw[gam==0] = 0
+        if flip:
+            stack[ii,:,:] = np.flipud(unw)
+        else:
+            stack[ii,:,:] = unw
+    viewer = napari.view_image(stack,colormap='jet')
+    
+    
+def getUNW(pair):
+    import isceobj
+    gam = np.load('gam.npy')
+    f = './merged/interferograms/' + pair + '/filt.unw'
+    intImage = isceobj.createImage()
+    intImage.dataType='FLOAT'
+    intImage.load(f + '.xml')
+    unw = intImage.memMap()[:,:,0]
+    unw = unw.copy()
+    unw[gam==0] = 0
+    return unw
+
+def getConCom(msk, minimumPixelsInRegion=1000):
+    '''
+    Takes a binary input (like a mask) as input and outputs labels for
+    regions greater than the given minimum pixels.
+    '''
+    
+    import cv2
+    ratesu8 = (msk*255).astype(np.uint8)
+    num_labels, labels = cv2.connectedComponents(ratesu8)
+    
+    npix = []
+    for ii in range(num_labels):
+        npix.append(len(np.where(labels==ii)[0]))
+    npix = np.asarray(npix)
+    # concom = np.where(npix>minimumPixelsInRegion)[0]
+    
+    newLabels = np.zeros(msk.shape)
+    
+    for ii in range(len(npix)):
+        lab = npix[ii]
+        newLabels[labels==lab] = ii
+        
+    return labels
