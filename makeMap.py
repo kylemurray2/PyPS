@@ -15,21 +15,24 @@ import cartopy.feature as cfeature
 import cartopy.crs as ccrs
 from matplotlib import pyplot as plt
 import numpy as np
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title):
 
+
+def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title, plotFaults= False):
+    
     minlat=lats.min()
     maxlat=lats.max()
     minlon=lons.min()
     maxlon=lons.max()
     bg = 'World_Imagery'
     url = 'https://server.arcgisonline.com/ArcGIS/rest/services/' + bg + '/MapServer/tile/{z}/{y}/{x}.jpg'
+
     image = cimgt.GoogleTiles(url=url)
     data_crs = ccrs.PlateCarree()
     fig = plt.figure(figsize=(6,8))
     ax = plt.axes(projection=data_crs)
-    img_handle = plt.pcolormesh(lons, lats, img, vmin=vmin,vmax=vmax,transform=data_crs,rasterized = True)
+    cmap = plt.get_cmap('jet')
+    img_handle = plt.pcolormesh(lons, lats, img,cmap=cmap, vmin=vmin,vmax=vmax,transform=data_crs,rasterized = True)
    
     
     lon_range = (pad+maxlon) - (minlon-pad)
@@ -62,10 +65,18 @@ def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title):
     # ax.yaxis.set_major_formatter(lat_formatter)
     ax.add_image(image,zoom) #zoom level
     plt.colorbar(img_handle,fraction=0.03, pad=0.05,orientation='horizontal')
+    
+    if plotFaults:
+        # Plot faults
+        import cartopy.io.shapereader as shpreader
+        from cartopy.feature import ShapelyFeature
+        reader = shpreader.Reader("/d/MapData/gem-global-active-faults/shapefile/gem_active_faults.shp")
+        shape_feature = ShapelyFeature(reader.geometries(), ccrs.PlateCarree(), edgecolor='r', facecolor='none',linewidth=1,zorder=5,alpha=0.8)
+        ax.add_feature(shape_feature)
+    
     plt.title(title)
     plt.show()
-    
-    
+
 def mapImg3(img1,img2,img3, lons, lats, vmin, vmax, pad, title1,title2,title3):
 
     minlat=lats.min()
@@ -122,7 +133,7 @@ def mapImg3(img1,img2,img3, lons, lats, vmin, vmax, pad, title1,title2,title3):
     plt.show()
     
     
-def mapBackground(bg, minlon, maxlon, minlat, maxlat, pad, zoomLevel, title, borders=True):
+def mapBackground(bg, minlon, maxlon, minlat, maxlat, pad, zoomLevel, title, borders=True,plotFaults=True):
   
     '''
     Makes a background map that you can then plot stuff over (footprints, scatterplot, etc.)
@@ -170,17 +181,37 @@ def mapBackground(bg, minlon, maxlon, minlat, maxlat, pad, zoomLevel, title, bor
     # ax.add_feature(cfeature.LAKES)
     # ax.add_feature(cfeature.RIVERS)
     
+    
     lon_range = (pad+maxlon) - (minlon-pad)
     lat_range = (pad+maxlat) - (minlat-pad)
     rangeMin = np.min(np.array([lon_range,lat_range]))
     tick_increment = round(rangeMin/4,1)
     
-    ax.set_xticks(np.arange(np.floor(minlon-pad),np.ceil(maxlon+pad),tick_increment), crs=ccrs.PlateCarree())
-    ax.set_yticks(np.arange(np.floor(minlat-pad),np.ceil(maxlat+pad),tick_increment), crs=ccrs.PlateCarree())
-    lon_formatter = LongitudeFormatter(zero_direction_label=True)
-    lat_formatter = LatitudeFormatter()
-    ax.xaxis.set_major_formatter(lon_formatter)
-    ax.yaxis.set_major_formatter(lat_formatter)
+    import matplotlib.ticker as mticker
+    from cartopy.mpl.ticker import (LongitudeFormatter, LatitudeFormatter,
+                                LatitudeLocator)
+    
+    gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
+                  linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    gl.xlocator = mticker.FixedLocator(np.arange(np.floor(minlon-pad),np.ceil(maxlon+pad),tick_increment))
+    gl.ylocator = LatitudeLocator()
+    gl.xformatter = LongitudeFormatter()
+    gl.yformatter = LatitudeFormatter()
+    gl.ylabel_style = {'size': 8, 'color': 'black'}
+    gl.xlabel_style = {'size': 8, 'color': 'black'}
+    gl.top_labels = False
+    gl.right_labels = False
+    
     ax.add_image(image, zoomLevel) #zoom level
+    
+    if plotFaults:
+        # Plot faults
+        import cartopy.io.shapereader as shpreader
+        from cartopy.feature import ShapelyFeature
+        reader = shpreader.Reader("/d/MapData/gem-global-active-faults/shapefile/gem_active_faults.shp")
+        shape_feature = ShapelyFeature(reader.geometries(), ccrs.PlateCarree(), edgecolor='r', facecolor='none',linewidth=1,zorder=5,alpha=0.8)
+        ax.add_feature(shape_feature)
+    
     plt.title(title)
     plt.show()
+    return plt
