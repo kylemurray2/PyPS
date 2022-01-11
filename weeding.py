@@ -22,13 +22,15 @@ from scipy.interpolate import griddata
 import glob
 import os
 from datetime import date
+import util
+
+plotStuff = True
 
 makeChanges = False
-mincor = .45
-gamThresh = .45
+mincor = .7
+gamThresh = .15
 
-
-plt.close('all')
+# plt.close('all')
 params = np.load('params.npy',allow_pickle=True).item()
 geom = np.load('geom.npy',allow_pickle=True).item()
 
@@ -38,13 +40,16 @@ locals().update(geom)
 nxl = params['nxl']
 nyl = params['nyl']
 
-
 # MASKING______________________________
 gam = np.load('gam.npy')
 gam[gam==0] = np.nan
+rs = np.sort(gam[~np.isnan(gam)].ravel())
+gam-=np.nanmedian(rs[0:500])
+gam/=np.nanmedian(rs[-500:])
+
 gamFlat = gam.flatten()
 
-r,c = 115,1665
+r,c = 265,97
 X,Y = np.meshgrid(range(nxl),range(nyl))
 
 stack = []
@@ -66,7 +71,7 @@ stackTimeVar = np.nanvar(stack,axis=0)
 
 corStack = []
 for p in params['pairs']:
-    cor_file = params['intdir'] + '/' + p + '/cor.r4'
+    cor_file = params['intdir'] + '/' + p + '/cor_lk.r4'
     corImage = isceobj.createIntImage()
     corImage.load(cor_file + '.xml')
     cor = corImage.memMap()[:,:,0]
@@ -74,6 +79,17 @@ for p in params['pairs']:
     cor[np.isnan(gam)] = np.nan
     corStack.append(cor)
 corStack = np.asarray(corStack,dtype=np.float32)[:,:,:]
+
+connStack = []
+for p in params['pairs']:
+    conn_file = params['intdir'] + '/' + p + '/filt.unw.conncomp'
+    connImage = isceobj.createIntImage()
+    connImage.load(conn_file + '.xml')
+    conn = connImage.memMap()[:,0,:]
+    # conn = conn.copy()
+    connStack.append(conn)
+connStack = np.asarray(connStack,dtype=np.float32)[:,:,:]
+
 
 # average cor value for each pair
 corAvg = []
@@ -87,19 +103,33 @@ for ii in np.arange(0,len(pairs)):
 corAvg = np.asarray(corAvg,dtype=np.float32)
 ifgVar = np.asarray(ifgVar,dtype=np.float32)
 
-plt.figure();plt.plot(corAvg);plt.xlabel('time index');plt.ylabel('Correlation')
-plt.figure();plt.plot(ifgVar);plt.xlabel('time index');plt.ylabel('IFG variance')
+if plotStuff:
+    fig,ax = plt.subplots(2,1,figsize=(8,5))
+    ax[0].plot(corAvg);ax[0].set_xlabel('time index');ax[0].set_ylabel('Correlation')
+    ax[1].plot(dec_year[1:],corAvg);ax[1].set_xlabel('Year');ax[1].set_ylabel('Correlation')
+    
+    fig,ax = plt.subplots(2,1,figsize=(8,5))
+    ax[0].plot(ifgVar);ax[0].set_xlabel('time index');ax[0].set_ylabel('IFG variance')
+    ax[1].plot(dec_year[1:],ifgVar);ax[1].set_xlabel('Year');ax[1].set_ylabel('IFG variance')
 
-
+# fig,ax = plt.subplots(1,figsize=(8,3))
+# ax.plot(dec_year[1:],corAvg,'.');ax.set_xlabel('time index');ax.set_ylabel('Correlation')
+# plt.savefig('Figs/corTS.svg')
 # plt.figure()
 # plt.plot(np.ravel(gam)[::10],np.ravel(np.nanmean(corStack,axis=0))[::10],'.',markersize = 1)
 # plt.xlabel('Gamma 0');plt.ylabel('Average Correlation');plt.show()
 
 corAvgMap = np.nanmean(corStack,axis=0)
-corVar = np.nanvar(corStack,axis=0)
-plt.figure();plt.imshow(corAvgMap);plt.title('Average Correlation')
-plt.figure();plt.imshow(corVar);plt.title('Correlation Variance')
 np.save('cor.npy',corAvgMap)
+corVar = np.nanvar(corStack,axis=0)
+
+if plotStuff:
+    fig,ax = plt.subplots(2,1,figsize=(8,10))
+    ax[0].imshow(corAvgMap);ax[0].set_title('Average Correlation')
+    ax[1].imshow(corVar);ax[1].set_title('Correlation Variance')
+np.save('cor.npy',corAvgMap)
+np.save('corVar.npy',corVar)
+
 # a = np.zeros(gam.shape)
 # a[np.where((corAvgMap<0.6)&(corVar>.04))] = 1
 # plt.figure();plt.imshow(a)
@@ -145,23 +175,35 @@ for ii in np.arange(0,len(dn)):
         pVars.append(np.nanvar(iv))
     dateVar.append(np.nanmin(pVars))
 dateVar = np.asarray(dateVar,dtype=np.float32)
-plt.figure();plt.plot(dateVar);plt.xlabel('time index');plt.ylabel('Date variance (average of associated ifgs')
 
-plt.figure();plt.imshow(gam,vmin=.45,vmax=.5)
-plt.figure();plt.imshow(np.nanmean(corStack,axis=0))
+connSum = np.sum(connStack,axis=0)
 
-# Make the mask msk
+
+if plotStuff:
+    plt.figure();plt.plot(dateVar);plt.xlabel('time index');plt.ylabel('Date variance (average of associated ifgs')
+    plt.figure();plt.imshow(gam,vmin=.45,vmax=.5);plt.title('Gamma0')
+    plt.figure();plt.imshow(connSum,cmap='jet_r');plt.title('Number of images with connected components')
+#if there are > 90% images with conncomp, then don't mask it, otherwise mask it. 
+
 msk = np.ones(gam.shape)
+msk[connSum < round(.9*nd)] = 0
+
+# # Make the mask msk
+# msk = np.ones(gam.shape)
 msk[gam<gamThresh] = 0
 msk[np.nanmean(corStack,axis=0)<mincor] = 0
-msk[np.isnan(gam)] = 0
-plt.figure();plt.imshow(msk);plt.title('mask')
+# msk[np.isnan(gam)] = 0
 np.save('msk.npy',msk)
+
+
+if plotStuff:
+    fig,ax = plt.subplots(2,1,figsize=(8,10))
+    ax[0].imshow(gam,vmin=.45,vmax=.5);ax[0].set_title('Gamma0')
+    ax[1].imshow(msk);ax[1].set_title('mask')
 
 print('\n The bad dates might be: \n')
 print(badDates)
 
-plt.figure();plt.imshow(msk)
 
 if makeChanges == True:    
     val = input("Do you want to move these dates and redifine params? [y/n]: ")
@@ -216,3 +258,4 @@ if makeChanges == True:
         params['dn0'] =          dn0
         
         np.save('params.npy',params)
+plt.show()
