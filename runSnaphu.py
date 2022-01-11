@@ -10,20 +10,28 @@ import numpy as np
 import isceobj
 import os
 import glob
+from time import sleep
+from tqdm import tqdm
 
 params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 
 geocode = False
 nproc='20'
-ntilerow='4'
-ntilecol='4'
-pair=params['pairs'][0]
+ntilerow='2'
+ntilecol='2'
+rowovrlp='50'
+colovrlp='50'
 
-for pair in params['pairs']:
+
+
+for ii in tqdm(range(len(params['pairs2']))):
+    pair = params['pairs2'][ii]
     infile = params['intdir']+ '/' + pair+'/fine_lk_filt.int'
-    corfile = params['intdir']+ '/' + pair+'/cor.r4'
+    corfile = params['intdir']+ '/' + pair+'/cor_lk.r4'
     outfile = params['intdir']+ '/' + pair+'/filt.unw'
+    conncompOut = params['intdir']+ '/' + pair+'/filt.unw.conncomp'
+
     if not os.path.isfile(outfile):
         print('unwrapping ' + pair)
         os.system('rm snaphu_tiles*')
@@ -32,15 +40,33 @@ for pair in params['pairs']:
         #    os.system(cmd)
         
         # Write out the xml file for the unwrapped ifg
-        out = isceobj.createIntImage() # Copy the interferogram image from before
-        out.scheme =  'BIP' #'BIP'/ 'BIL' / 'BSQ' 
-        out.dataType = 'FLOAT'
-        out.filename = outfile
+        out1 = isceobj.createIntImage() # Copy the interferogram image from before
+        out1.scheme =  'BIP' #'BIP'/ 'BIL' / 'BSQ' 
+        out1.dataType = 'FLOAT'
+        out1.filename = outfile
+        out1.width = params['nxl']
+        out1.length = params['nyl']
+        out1.dump(outfile + '.xml') # Write out xml
+        out1.renderHdr()
+        out1.renderVRT()
+        out1.finalizeImage()
+
+        
+        # Write xml for conncomp files
+        out = isceobj.createImage() # Copy the interferogram image from before
+        out.accessMode = 'READ'
+        out.byteOrder = 'l'
+        out.dataType = 'BYTE'
+        out.family = 'image'
+        out.filename = conncompOut
+        out.bands = 1
+        out.scheme =  'BIL' #'BIP'/ 'BIL' / 'BSQ' 
         out.width = params['nxl']
         out.length = params['nyl']
-        out.dump(outfile + '.xml') # Write out xml
+        out.dump(conncompOut + '.xml') # Write out xml
         out.renderHdr()
         out.renderVRT()
+        out.finalizeImage()
         
      # Write out a config file
         config_file_name = params['intdir'] + '/' +  pair + '/snaphu.conf'
@@ -70,12 +96,12 @@ for pair in params['pairs']:
         conf.append('# Maximum number of child processes to start for parallel tile    \n')
         conf.append('# unwrapping.                                                     \n')
         conf.append('NPROC  '          +     nproc                                  + '\n')
-        conf.append('ROWOVRLP 200                                                      \n')
-        conf.append('COLOVRLP 200                                                      \n')
+        conf.append('ROWOVRLP ' + rowovrlp + '                                         \n')
+        conf.append('COLOVRLP ' + colovrlp + '                                         \n')
         conf.append('RMTMPTILE TRUE                                                    \n')
         with open(config_file_name,'w') as f:
             [f.writelines(c) for c in conf]
-        command = 'snaphu --mcf -f  ' + config_file_name 
+        command = 'snaphu --mcf -g ' + conncompOut + ' -S -f ' + config_file_name 
         os.system(command)
     else:
         print(outfile + ' already exists.')
