@@ -6,6 +6,7 @@ Created on Tue Jul 31 15:20:01 2018
 
 @author: kdm95
 """
+
 import numpy as np
 import glob
 import os
@@ -34,7 +35,10 @@ from scipy import signal
 import localParams
 workdir, skip, alks, rlks, seaLevel, ifg_mode,crop,cropymin,cropymax,cropxmin,cropxmax = localParams.getLocalParams()
 
-doDownlook = True
+plot=True
+plt.close('all')
+doDownlook = False
+pairs2Overlap = 5
 lam = 0.056 # 0.056 for c-band
 mergeddir=workdir + '/merged'
 intdir = mergeddir + '/interferograms'
@@ -45,6 +49,21 @@ if not os.path.isdir(tsdir):
     os.mkdir(tsdir) 
 if not os.path.isdir(workdir + '/Figs'):
     os.mkdir(workdir + '/Figs')
+
+
+geomList = glob.glob(mergeddir + '/geom_reference/*full')
+slcList = glob.glob(slcdir + '/*/*full')
+blList = glob.glob(mergeddir + '/baselines/????????/????????')
+if doDownlook:
+    for fname in slcList:
+        os.system('fixImageXml.py -i ' + fname + ' -f')
+    for fname in geomList:
+        os.system('fixImageXml.py -i ' + fname + ' -f')
+    # for fname in blList:
+    #     os.system('fixImageXml.py -i ' + fname + ' -f')
+        
+
+
 
 if ifg_mode:
     pairs1=list()
@@ -63,16 +82,25 @@ else:
     for f in flist:
         dates.append(f[-8:])
     dates.sort()
-    #dates = np.unique(np.asarray(dates,dtype = str))
-    pairs1=list()
-    pairs2=list()
-    pairs = list()
-    for ii,d in enumerate(dates):
-        for jj in np.arange(1,skip+1):
-            try:
-                pairs.append(dates[ii] + '_' + dates[ii+jj])
-            except:
-                pass
+
+    pairs = list()    
+    jj=skip
+    for ii,d in enumerate(dates[0:-1]):
+        # for jj in np.arange(1,skip+1):
+        if  ((len(dates)-skip)-ii) < 1:
+            jj-=1
+        
+        pairs.append(dates[ii] + '_' + dates[ii+jj])
+    
+    # Now make pairs2
+    pairs2 = list()  
+    # pairs2.append(dates[ii] + '_' + dates[0])
+    for ii,d in enumerate(dates[0:-1]):
+        for jj in np.arange(1,pairs2Overlap+1):
+            
+            if ii+jj < len(dates):
+                pairs2.append(dates[ii] + '_' + dates[ii+jj])
+    
 
 dn = list()  
 dec_year = list()
@@ -91,17 +119,17 @@ dn0 = dn-dn[0] # make relative to first date
         
 nd = len(pairs)
 # rename geometry files to add 'full'
-os.system('mv merged/geom_master/hgt.rdr merged/geom_master/hgt.rdr.full')
-os.system('mv merged/geom_master/lat.rdr merged/geom_master/lat.rdr.full')
-os.system('mv merged/geom_master/lon.rdr merged/geom_master/lon.rdr.full')
-os.system('mv merged/geom_master/incLocal.rdr merged/geom_master/incLocal.rdr.full')
-os.system('mv merged/geom_master/los.rdr merged/geom_master/los.rdr.full')
-os.system('mv merged/geom_master/shadowMask.rdr merged/geom_master/shadowMask.rdr.full')
+os.system('mv merged/geom_reference/hgt.rdr merged/geom_reference/hgt.rdr.full')
+os.system('mv merged/geom_reference/lat.rdr merged/geom_reference/lat.rdr.full')
+os.system('mv merged/geom_reference/lon.rdr merged/geom_reference/lon.rdr.full')
+os.system('mv merged/geom_reference/incLocal.rdr merged/geom_reference/incLocal.rdr.full')
+os.system('mv merged/geom_reference/los.rdr merged/geom_reference/los.rdr.full')
+os.system('mv merged/geom_reference/shadowMask.rdr merged/geom_reference/shadowMask.rdr.full')
 
 # Get width and length
-f_lon = mergeddir + '/geom_master/lon.rdr.full.vrt'
+f_lon = mergeddir + '/geom_reference/lon.rdr.full.vrt'
 
-f_lon = mergeddir + '/geom_master/lon.rdr.full'
+f_lon = mergeddir + '/geom_reference/lon.rdr.full'
 gImage = isceobj.createIntImage()
 gImage.load(f_lon + '.xml')
 
@@ -132,11 +160,11 @@ if crop:
             slc1.tofile(slcImagec.filename) # Write file out
             slcImagec.finalizeImage()
 
-file_list = list(['lat','lon','hgt'])#,'incLocal','shadowMask'])
+file_list = list(['lat','lon','hgt','los','shadowMask','incLocal']) 
 
 if crop:
     for f in file_list:
-        infile = mergeddir + '/geom_master/' + f + '.rdr.full'
+        infile = mergeddir + '/geom_reference/' + f + '.rdr.full'
         imgi = isceobj.createImage()
         imgi.load(infile+'.xml')
         geomIm = imgi.memMap()[cropymin:cropymax,cropxmin:cropxmax,0]
@@ -163,19 +191,26 @@ if doDownlook:
         lkObj.setOutputFilename(outfile)
         lkObj.looks()
     for f in file_list:
+
         if crop:
-            infile = mergeddir + '/geom_master/' + f + '.rdr.full.crop'
+            infile = mergeddir + '/geom_reference/' + f + '.rdr.full.crop'
         else:
-            infile = mergeddir + '/geom_master/' + f + '.rdr.full'
-            
-        outfile = mergeddir + '/geom_master/' + f + '_lk.rdr'
-        downLook(infile, outfile,alks,rlks)
+            infile = mergeddir + '/geom_reference/' + f + '.rdr.full'
+        
+        outfile = mergeddir + '/geom_reference/' + f + '_lk.rdr'
+        if not os.path.isfile(outfile):
+            downLook(infile, outfile,alks,rlks)
+        else:
+            print(outfile + ' already exists')
     
     
 # Get bounding coordinates (Frame)
-f_lon_lk = mergeddir + '/geom_master/lon_lk.rdr'
-f_lat_lk = mergeddir + '/geom_master/lat_lk.rdr'
-f_hgt_lk = mergeddir + '/geom_master/hgt_lk.rdr'
+f_lon_lk = mergeddir + '/geom_reference/lon_lk.rdr'
+f_lat_lk = mergeddir + '/geom_reference/lat_lk.rdr'
+f_hgt_lk = mergeddir + '/geom_reference/hgt_lk.rdr'
+f_los_lk = mergeddir + '/geom_reference/los_lk.rdr'
+f_shm_lk = mergeddir + '/geom_reference/shadowMask_lk.rdr'
+f_inc_lk = mergeddir + '/geom_reference/incLocal_lk.rdr'
 
 Image = isceobj.createImage()
 Image.load(f_lon_lk + '.xml')
@@ -183,6 +218,9 @@ lon_ifg = Image.memMap()[:,:,0]
 lon_ifg = lon_ifg.copy().astype(np.float32)
 lon_ifg[lon_ifg==0]=np.nan
 Image.finalizeImage()
+
+nyl,nxl = lon_ifg.shape
+
 
 Image = isceobj.createImage()
 Image.load(f_lat_lk + '.xml')
@@ -198,13 +236,114 @@ hgt_ifg = hgt_ifg.copy().astype(np.float32)
 hgt_ifg[hgt_ifg==0]=np.nan
 Image.finalizeImage()
 
-nyl,nxl = lon_ifg.shape
+Image = isceobj.createImage()
+Image.load(f_los_lk + '.xml')
+Image.bands=2
+Image.scheme='BSQ'
+los_ifg = Image.memMap()[0,:,:]
+az_ifg = Image.memMap()[1,:,:]
+Image.finalizeImage()
 
-# Geniusly get rid of edge artifacts from downlooking
+# Write out a new los file
+losOutname = mergeddir + '/geom_reference/los2_lk.rdr'
+fidc=open(losOutname,"wb")
+fidc.write(los_ifg)
+#write out an xml file for it
+out = isceobj.createIntImage() # Copy the interferogram image from before
+out.dataType = 'FLOAT'
+out.bands = 1
+out.filename = losOutname
+out.width = nxl
+out.length = nyl
+out.dump(losOutname + '.xml') # Write out xml
+out.renderHdr()
+out.renderVRT()
+
+
+# Write out a new az file
+azOutname = mergeddir + '/geom_reference/az_lk.rdr'
+fidc=open(azOutname,"wb")
+fidc.write(az_ifg)
+#write out an xml file for it
+out = isceobj.createIntImage() # Copy the interferogram image from before
+out.dataType = 'FLOAT'
+out.bands = 1
+out.filename = azOutname
+out.width = nxl
+out.length = nyl
+out.dump(azOutname + '.xml') # Write out xml
+out.renderHdr()
+out.renderVRT()
+
+# if you want to save these to geom
+los_ifg = los_ifg.copy().astype(np.float32)
+los_ifg[los_ifg==0]=np.nan
+az_ifg = az_ifg.copy().astype(np.float32)
+az_ifg[az_ifg==0]=np.nan
+
+Image = isceobj.createImage()
+Image.load(f_shm_lk + '.xml')
+Image.bands=1
+shm_ifg = Image.memMap()[:,0,:]
+shm_ifg = shm_ifg.copy().astype(np.float32)
+shm_ifg[np.isnan(hgt_ifg)]=np.nan
+Image.finalizeImage()
+
+Image = isceobj.createImage()
+Image.load(f_inc_lk + '.xml')
+Image.bands=2
+Image.scheme='BSQ'
+inc_ifg1 = Image.memMap()[0,:,:] # relative to the local plane of the ground
+inc_ifg = Image.memMap()[1,:,:] # relative to surface normal vector (this is the one we want I think)
+
+# Write out a new inc file
+incOutname = mergeddir + '/geom_reference/inc_lk.rdr'
+fidc=open(incOutname,"wb")
+fidc.write(inc_ifg)
+#write out an xml file for it
+out = isceobj.createIntImage() # Copy the interferogram image from before
+out.dataType = 'FLOAT'
+out.bands = 1
+out.filename = incOutname
+out.width = nxl
+out.length = nyl
+out.dump(incOutname + '.xml') # Write out xml
+out.renderHdr()
+out.renderVRT()
+
+
+inc_ifg = inc_ifg.copy().astype(np.float32)
+inc_ifg[inc_ifg==0]=np.nan
+Image.finalizeImage()
+
+
+# Get rid of edge artifacts from downlooking
 Q = np.array([[0,0,0],[0,1,0],[0,0,0]])
 lon_ifg = signal.convolve2d(lon_ifg,Q, mode='same')
 lat_ifg = signal.convolve2d(lat_ifg,Q, mode='same')
 hgt_ifg = signal.convolve2d(hgt_ifg,Q, mode='same')
+los_ifg = signal.convolve2d(los_ifg,Q, mode='same')
+shm_ifg = signal.convolve2d(shm_ifg,Q, mode='same')
+inc_ifg = signal.convolve2d(inc_ifg,Q, mode='same')
+
+#Do it again for good measure (could also just make the kernel bigger..)
+lon_ifg = signal.convolve2d(lon_ifg,Q, mode='same')
+lat_ifg = signal.convolve2d(lat_ifg,Q, mode='same')
+hgt_ifg = signal.convolve2d(hgt_ifg,Q, mode='same')
+los_ifg = signal.convolve2d(los_ifg,Q, mode='same')
+shm_ifg = signal.convolve2d(shm_ifg,Q, mode='same')
+inc_ifg = signal.convolve2d(inc_ifg,Q, mode='same')
+
+if plot:
+    cmap = 'Spectral_r'
+    fig,ax = plt.subplots(3,2,figsize=(9,9))
+    ax[0,0].imshow(lon_ifg,cmap=cmap);ax[0,0].set_title('lon_ifg')
+    ax[0,1].imshow(lat_ifg,cmap=cmap);ax[0,1].set_title('lat_ifg')
+    ax[1,0].imshow(hgt_ifg,cmap=cmap);ax[1,0].set_title('hgt_ifg')
+    ax[1,1].imshow(los_ifg,cmap=cmap);ax[1,1].set_title('los_ifg')
+    ax[2,0].imshow(shm_ifg,cmap=cmap);ax[2,0].set_title('shm_ifg')
+    ax[2,1].imshow(inc_ifg,cmap=cmap);ax[2,1].set_title('inc_ifg')
+    plt.savefig(workdir + '/Figs/geom.svg',transparent=True,dpi=100 )
 
 # Figure out where the nan values begin and end so we can crop them if we want later.
 for l in np.arange(0,nyl):
@@ -245,12 +384,46 @@ maxlat=latI.max()
 minlon=lonI.min()
 maxlon=lonI.max()
 
-bg = 'World_Shaded_Relief'
-pad=2
-makeMap.mapBackground(bg,minlon,maxlon,minlat,maxlat,1,8,'Footprint',borders=False)
-plt.plot(lon_bounds,lat_bounds,linewidth=2,color='red',zorder=10,transform=ccrs.PlateCarree())
-plt.rc('font',size=14)
-plt.savefig(workdir + '/Figs/areamap.svg',transparent=True,dpi=100 )
+if plot:
+    zoomLevel=8
+    borders=True
+    from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
+    import cartopy.io.img_tiles as cimgt
+    import cartopy.feature as cfeature
+    import cartopy.crs as ccrs
+    bg = 'World_Shaded_Relief'
+    pad=2
+    
+    url = 'https://server.arcgisonline.com/ArcGIS/rest/services/' + bg + '/MapServer/tile/{z}/{y}/{x}.jpg'
+    image = cimgt.GoogleTiles(url=url)
+    data_crs = ccrs.PlateCarree()
+    fig =  plt.figure(figsize=(6,6))
+    ax = plt.axes(projection=data_crs)
+    ax.set_extent([minlon-pad, maxlon+pad, minlat-pad, maxlat+pad], crs=ccrs.PlateCarree())
+
+    if borders:
+        ax.add_feature(cfeature.BORDERS,linewidth=1,color='white')
+    # ax.add_feature(cfeature.OCEAN)
+    # ax.add_feature(cfeature.LAKES)
+    # ax.add_feature(cfeature.RIVERS)
+    
+    lon_range = (pad+maxlon) - (minlon-pad)
+    lat_range = (pad+maxlat) - (minlat-pad)
+    rangeMin = np.min(np.array([lon_range,lat_range]))
+    tick_increment = round(rangeMin/4,1)
+    
+    ax.set_xticks(np.arange(np.floor(minlon-pad),np.ceil(maxlon+pad),tick_increment), crs=ccrs.PlateCarree())
+    ax.set_yticks(np.arange(np.floor(minlat-pad),np.ceil(maxlat+pad),tick_increment), crs=ccrs.PlateCarree())
+    lon_formatter = LongitudeFormatter(zero_direction_label=True)
+    lat_formatter = LatitudeFormatter()
+    ax.xaxis.set_major_formatter(lon_formatter)
+    ax.yaxis.set_major_formatter(lat_formatter)
+    ax.add_image(image, zoomLevel) #zoom level
+    plt.title('Footprint')
+    
+    plt.plot(lon_bounds,lat_bounds,linewidth=2,color='red',zorder=10,transform=ccrs.PlateCarree())
+    plt.rc('font',size=14)
+    plt.savefig(workdir + '/Figs/areamap.svg',transparent=True,dpi=100 )
 
 
 mergeddir =workdir + '/merged'
@@ -261,6 +434,10 @@ geom = {}
 geom['lon_ifg'] = lonI
 geom['lat_ifg'] = latI
 geom['hgt_ifg'] = hgt_ifg
+geom['los_ifg'] = los_ifg
+geom['shm_ifg'] = shm_ifg
+geom['inc_ifg'] = inc_ifg
+
 np.save('geom.npy',geom)
 
 # Save arrays and variables to a dictionary 'params'
@@ -268,6 +445,7 @@ params = dict()
 params['pairs'] =        pairs
 params['dates'] =        dates
 params['pairs'] =        pairs
+params['pairs2'] =        pairs2
 params['dec_year'] =     dec_year
 params['dn'] =           dn
 params['dn0'] =          dn0
@@ -303,7 +481,7 @@ params['cropxmax'] =     cropxmax
 
 # Save the dictionary
 np.save('params.npy',params)
-
+plt.close('all')
 # To load the dictionary later, do this:
 # params = np.load('params.npy').item()
 # locals().update(params) this parses all variables from the dict to local variables
