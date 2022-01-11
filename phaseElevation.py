@@ -22,7 +22,7 @@ Inputs:
 """
 import numpy as np
 from matplotlib import pyplot as plt
-from mpl_toolkits.basemap import Basemap
+# from mpl_toolkits.basemap import Basemap
 from scipy.cluster.vq import vq, kmeans, whiten
 from scipy.interpolate import griddata
 import cv2 as cv
@@ -141,7 +141,7 @@ def hgtClust(phs_ifg,msk_ifg,msk,lon_ifg,lat_ifg,hgt_ifg,minlon,maxlon,minlat,ma
             ax[0].scatter(zz,phsy,s=.1,color='black',rasterized=True)
             ax[0].plot(np.sort(zz),phso,linewidth=2,color=plt.cm.tab10(0))
             ax[0].set_ylabel('Phase (cm)')
-            plt.savefig('PhaseElevation/Figures/clustered_phselev_scatter_' + str(nk) + 'K' + pair + '.svg',transparent=True,dpi=300)
+            # plt.savefig('PhaseElevation/Figures/clustered_phselev_scatter_' + str(nk) + 'K' + pair + '.svg',transparent=True,dpi=300)
 
     else:
         G = np.vstack([zz, np.ones((len(zz),1)).flatten()]).T
@@ -154,7 +154,7 @@ def hgtClust(phs_ifg,msk_ifg,msk,lon_ifg,lat_ifg,hgt_ifg,minlon,maxlon,minlat,ma
             ax[0].scatter(zz,phsy,s=.1,color='black',rasterized=True)
             ax[0].plot(zz,phso,linewidth=2,color=plt.cm.tab10(0))
             ax[0].set_ylabel('Phase (cm)')
-            plt.savefig('PhaseElevation/Figures/clustered_phselev_scatter_' + str(nk) + 'K' + pair + '.svg',transparent=True,dpi=300)
+            # plt.savefig('PhaseElevation/Figures/clustered_phselev_scatter_' + str(nk) + 'K' + pair + '.svg',transparent=True,dpi=300)
     
     
     lons_clust=np.empty((1,len(phs_km)),dtype=np.float32)[0,:]
@@ -248,82 +248,82 @@ def hgtClust(phs_ifg,msk_ifg,msk,lon_ifg,lat_ifg,hgt_ifg,minlon,maxlon,minlat,ma
         phs_c[hgt_ifg<0]=np.nan
         
         # MAKE MAP
-        mapImg3(pm-np.nanmedian(pm),hm-np.nanmedian(hm),pcm-np.nanmedian(pcm), lons, lats, vmin, vmax, pad, "Original IFG","Uniform model","Corrected phase")
+        # mapImg3(pm-np.nanmedian(pm),hm-np.nanmedian(hm),pcm-np.nanmedian(pcm), lons, lats, vmin, vmax, pad, "Original IFG","Uniform model","Corrected phase")
         
-        if doPowerLaw:
-            plt.savefig('PhaseElevation/Figures/Uniform_correctionmaps_PL_' + str(nk) + 'K' + pair + '.svg')
-        else:
-            plt.savefig('PhaseElevation/Figures/correctionmaps' + str(nk) + 'K' + pair + '.svg')
+        # if doPowerLaw:
+        #     plt.savefig('PhaseElevation/Figures/Uniform_correctionmaps_PL_' + str(nk) + 'K' + pair + '.svg')
+        # else:
+        #     plt.savefig('PhaseElevation/Figures/correctionmaps' + str(nk) + 'K' + pair + '.svg')
 
 
         hgt_ifg[hgt_ifg<-5] = np.nan
         slopes2[hgt_ifg<-5] = np.nan
 
-# Plot cluster,slope, and DEM
-        plt.rc('font',size=12);
-        fig = plt.figure(figsize=(10,8))
-        c = plt.cm.viridis
-        pad=0
-        ax = fig.add_subplot(141)
-        ax.set_title("Elevation")
-        m = Basemap(projection='merc',\
-                llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-                llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
-        m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
-        m.drawstates(linewidth=1.5,zorder=1,color='white')
-        m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[0,0,0,0])  # set linwidth to zero so there is no grid
-        m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
-        cf = m.pcolormesh(lon_ifg,lat_ifg,hgt_ifg,shading='flat',cmap=c,latlon=True,zorder=3,vmin=10,vmax=3000,rasterized=True)
-        cbar = m.colorbar(cf,location='bottom',pad="10%")
-        cbar.set_label('m')
+# # Plot cluster,slope, and DEM
+#         plt.rc('font',size=12);
+#         fig = plt.figure(figsize=(10,8))
+#         c = plt.cm.viridis
+#         pad=0
+#         ax = fig.add_subplot(141)
+#         ax.set_title("Elevation")
+#         m = Basemap(projection='merc',\
+#                 llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
+#                 llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
+#         m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
+#         m.drawstates(linewidth=1.5,zorder=1,color='white')
+#         m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[0,0,0,0])  # set linwidth to zero so there is no grid
+#         m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
+#         cf = m.pcolormesh(lon_ifg,lat_ifg,hgt_ifg,shading='flat',cmap=c,latlon=True,zorder=3,vmin=10,vmax=3000,rasterized=True)
+#         cbar = m.colorbar(cf,location='bottom',pad="10%")
+#         cbar.set_label('m')
     
         
-        ax = fig.add_subplot(142)
-        ax.set_title("Clusters")
-        # Plot cluster map
-        m = Basemap(projection='merc',\
-                llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-                llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
-        m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
-        m.drawstates(linewidth=1.5,zorder=1,color='white')
-        m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])  # set linwidth to zero so there is no grid
-        m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
-        for kk in np.arange(0,nk): 
-              m.scatter(lons[phs_km ==kk], lats[phs_km == kk], s=2,cmap=plt.cm.viridis_r, latlon=True,zorder=12,rasterized=True)
-        cbar = m.colorbar(cf,location='bottom',pad="10%")
-        cbar.set_label('m')
+#         ax = fig.add_subplot(142)
+#         ax.set_title("Clusters")
+#         # Plot cluster map
+#         m = Basemap(projection='merc',\
+#                 llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
+#                 llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
+#         m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
+#         m.drawstates(linewidth=1.5,zorder=1,color='white')
+#         m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])  # set linwidth to zero so there is no grid
+#         m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
+#         for kk in np.arange(0,nk): 
+#               m.scatter(lons[phs_km ==kk], lats[phs_km == kk], s=2,cmap=plt.cm.viridis_r, latlon=True,zorder=12,rasterized=True)
+#         cbar = m.colorbar(cf,location='bottom',pad="10%")
+#         cbar.set_label('m')
         
         
-        ax = fig.add_subplot(143)
-        ax.set_title("Phase/elevation dependence (slope)")
-        m = Basemap(projection='merc',\
-                llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-                llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
-        m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
-        m.drawstates(linewidth=1.5,zorder=1,color='white')
-        m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[0,0,0,0])  # set linwidth to zero so there is no grid
-        m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
-        cf = m.pcolormesh(lon_ifg,lat_ifg,slopes2*10,cmap=plt.cm.viridis_r,latlon=True,zorder=3,rasterized=True)
-        cbar = m.colorbar(cf,location='bottom',pad="10%")
-        cbar.set_label('mm/m')    
+#         ax = fig.add_subplot(143)
+#         ax.set_title("Phase/elevation dependence (slope)")
+#         m = Basemap(projection='merc',\
+#                 llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
+#                 llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
+#         m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
+#         m.drawstates(linewidth=1.5,zorder=1,color='white')
+#         m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[0,0,0,0])  # set linwidth to zero so there is no grid
+#         m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
+#         cf = m.pcolormesh(lon_ifg,lat_ifg,slopes2*10,cmap=plt.cm.viridis_r,latlon=True,zorder=3,rasterized=True)
+#         cbar = m.colorbar(cf,location='bottom',pad="10%")
+#         cbar.set_label('mm/m')    
         
-        ax = fig.add_subplot(144)
-        ax.set_title("Bias (Y-intercept)")
-        m = Basemap(projection='merc',\
-                llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
-                llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
-        m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
-        m.drawstates(linewidth=1.5,zorder=1,color='white')
-        m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[0,0,0,0])  # set linwidth to zero so there is no grid
-        m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
-        cf = m.pcolormesh(lon_ifg,lat_ifg,yints2,cmap=plt.cm.viridis_r,latlon=True,zorder=3,rasterized=True)
-        cbar = m.colorbar(cf,location='bottom',pad="10%")
-        cbar.set_label('cm')  
+#         ax = fig.add_subplot(144)
+#         ax.set_title("Bias (Y-intercept)")
+#         m = Basemap(projection='merc',\
+#                 llcrnrlat=minlat-pad,urcrnrlat=maxlat+pad,\
+#                 llcrnrlon=minlon-pad,urcrnrlon=maxlon+pad,resolution='i',epsg=3395)
+#         m.arcgisimage(service='World_Shaded_Relief',xpixels=600)
+#         m.drawstates(linewidth=1.5,zorder=1,color='white')
+#         m.drawparallels(np.arange(np.floor(minlat), np.ceil(maxlat), 2), linewidth=.3,dashes=[5,15], labels=[0,0,0,0])  # set linwidth to zero so there is no grid
+#         m.drawmeridians(np.arange(np.floor(minlon), np.ceil(maxlon),2), linewidth=.3,dashes=[5,15], labels=[1,0,0,1])
+#         cf = m.pcolormesh(lon_ifg,lat_ifg,yints2,cmap=plt.cm.viridis_r,latlon=True,zorder=3,rasterized=True)
+#         cbar = m.colorbar(cf,location='bottom',pad="10%")
+#         cbar.set_label('cm')  
         
-        if doPowerLaw:
-            plt.savefig('PhaseElevation/Figures/clusters_slopes_maps_PL_' + str(nk) + 'K' + pair + '.svg')
-        else:
-            plt.savefig('PhaseElevation/Figures/clusters_slopes_maps' + str(nk) + 'K' + pair + '.svg')
-        plt.show()
+        # if doPowerLaw:
+            # plt.savefig('PhaseElevation/Figures/clusters_slopes_maps_PL_' + str(nk) + 'K' + pair + '.svg')
+        # else:
+            # plt.savefig('PhaseElevation/Figures/clusters_slopes_maps' + str(nk) + 'K' + pair + '.svg')
+        # plt.show()
         
     return phs_c, hgt_m, phs_c_uniform, phs_m_uniform  #return the corrected image
