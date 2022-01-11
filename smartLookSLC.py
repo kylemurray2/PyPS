@@ -16,24 +16,20 @@ import isceobj
 from matplotlib import pyplot as plt
 import cv2
 import os
+import timeit
 
 filterFlag = True
-filterStrength = '0.3'
+filterStrength = '.5'
 
 nblocks = 1
 
-#from mroipac.filter.Filter import Filter
 params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 geom = np.load('geom.npy',allow_pickle=True).item()
 seaLevel=-10
-#locals().update(geom)
-#params['slcdir'] = '/data/kdm95/Delta/p42/merged/SLC_VV'
-#np.save('params.npy',params)
 nxl= params['nxl']
 nyl = params['nyl']
 tsdir = params['tsdir']
-
 
 # Creat window and downlooking vectors
 win1 =np.ones((params['alks'],params['rlks']))
@@ -49,12 +45,14 @@ del(xx,yy)
 f = params['tsdir'] + '/gamma0.int'
 intImage = isceobj.createIntImage()
 intImage.load(f + '.xml')
+
 if crop: 
     gamma0= intImage.memMap()[cropymin:cropymax,cropxmin:cropxmax,0] 
 else:
     gamma0= intImage.memMap()[:,:,0] 
 
 gamma0=gamma0.copy() # mmap is readonly, so we need to copy it.
+gamma0[np.isnan(gamma0)] = 0
 
 
 if not os.path.isfile('gam.npy'):
@@ -85,16 +83,17 @@ else:
 if not os.path.isdir(params['intdir']):
     os.system('mkdir ' + params['intdir'])
 
-msk_filt = cv2.filter2D(gamma0,-1, win)
+gam_filt = cv2.filter2D(gamma0,-1, win)
 
-pair = params['pairs'][0]
+pair = params['pairs2'][0]
 
-for pair in params['pairs']: #loop through each ifg and save to 
+for pair in params['pairs2']: #loop through each ifg and save to 
     if not os.path.isdir(params['intdir'] + '/' + pair):
         os.system('mkdir ' + params['intdir']+ '/' + pair)
     if not os.path.isfile(params['intdir'] + '/' + pair + '/fine_lk.int'):
         print('working on ' + pair)
         
+        starttime = timeit.default_timer()
         #Open a file to save stuff to
         out = isceobj.createImage() # Copy the interferogram image from before
         out.dataType = 'CFLOAT'
@@ -115,7 +114,6 @@ for pair in params['pairs']: #loop through each ifg and save to
         
         # break it into blocks
         for kk in np.arange(0,nblocks):
-            print(str(kk))
             idy = int(np.floor(ny/nblocks))
             start = int(kk*idy)
             stop = start+idy+1
@@ -149,41 +147,36 @@ for pair in params['pairs']: #loop through each ifg and save to
             slc2 = slcImage.memMap()[start:stop,:,0]
             ifg = np.multiply(slc1,np.conj(slc2))
             
-            del(slc1,slc2)
+            # del(slc1,slc2)
             
-            ifg_real = np.real(ifg)
-            ifg_imag = np.imag(ifg)
             
-            del(ifg)
-        
-            ifg_real_filt0 = cv2.filter2D(ifg_real,-1, win)
-            ifg_real = ifg_real * gamma0[start:stop,:]
+            # multiply by gamma0 (weight the values)
+            ifg_real = np.real(ifg) * gamma0[start:stop,:]
+            ifg_imag = np.imag(ifg) * gamma0[start:stop,:]
+            
+
+            # del(ifg)
+            
+            # simple filter of the ifg just like we did with the gamma0 file (now msk_filt)
+            # This is the mean phase of pixels in each box
             ifg_real_filt = cv2.filter2D(ifg_real,-1, win)
-            del(ifg_real)
-            rea_lk = np.reshape((ifg_real_filt/msk_filt[start:stop,:])[y,x],(idl,params['nxl']))
-            del(ifg_real_filt)
-    
-            ifg_imag_filt0 = cv2.filter2D(ifg_imag,-1, win)
-            ifg_imag = ifg_imag * gamma0[start:stop,:]
+            # now reverse the multiplication we did by dividing by the msk_filt
+            #   and take the center pixel from each box
+            rea_lk = np.reshape((ifg_real_filt/gam_filt[start:stop,:])[y,x],(idl,params['nxl']))    
+           
             ifg_imag_filt = cv2.filter2D(ifg_imag,-1, win)
-            del(ifg_imag)
-            ima_lk = np.reshape((ifg_imag_filt/msk_filt[start:stop,:])[y,x],(idl,params['nxl']))
-            del(ifg_imag_filt)
+            ima_lk = np.reshape((ifg_imag_filt/gam_filt[start:stop,:])[y,x],(idl,params['nxl']))
             
-    #        phs_lk = np.arctan2(ima_lk, rea_lk)
-    #        phs_lk[np.isnan(phs_lk)] = 0
-    #        phs_lk[geom['hgt_ifg'] < seaLevel] = 0
+            # del(ifg_imag_filt,ifg_imag,ifg_real_filt,ifg_real)
+    
             cpx = ima_lk*1j + rea_lk
             cpx[np.isnan(cpx)] = 0
 #            cpx[geom['hgt_ifg'] < seaLevel] = 0
-                    # Save downlooked ifg
-    
 #            cpx.tofile(of) # Write file out
             fid.write(cpx)
             
-            
             cor_lk = np.log(  np.abs(  (rea_lk+(1j*ima_lk)).astype(np.complex64)) )
-            cor_lk /= cor_lk[~np.isnan(cor_lk)].max()
+            # cor_lk /= cor_lk[~np.isnan(cor_lk)].max()
             cor_lk[np.isinf(cor_lk)] = 0
             cor_lk[np.isnan(cor_lk)] = 0
 #            cor_lk[geom['hgt_ifg'] < seaLevel] = 0
@@ -195,15 +188,16 @@ for pair in params['pairs']: #loop through each ifg and save to
         outc.renderVRT() 
         fid.close()
         fidc.close()
-    # for pair in params['pairs']: #loop through each ifg and save to 
+    # for pair in params['pairs2']: #loop through each ifg and save to 
         if filterFlag:
             name = params['intdir'] + '/' + pair + '/fine_lk.int'
             corname = params['intdir'] + '/' + pair + '/cor.r4'
             offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/km/Software/test/isce2/contrib/stack/topsStack/FilterAndCoherence.py -i ' + name + ' -c ' + corname +  ' -f ' +  offilt + ' -s ' + filterStrength
+            command = 'python /home/km/Software/test/isce2/contrib/stack/topsStack/FilterAndCoherence.py -i ' + name + ' -f ' +  offilt + ' -s ' + filterStrength + ' > log'
             os.system(command)
-            
-            
+        # print("The time difference is :", timeit.default_timer() - starttime)      
+
+# plt.figure();plt.imshow(np.angle(cpx),cmap='hsv')        
 
 # Downlook geom files this way too
 
@@ -236,3 +230,7 @@ for pair in params['pairs']: #loop through each ifg and save to
 #geom['lat_ifg'] = latlk
 #geom['hgt_ifg'] = hgtlk
 #np.save('geom.npy',geom)
+
+
+
+
