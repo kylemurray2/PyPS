@@ -36,9 +36,11 @@ def get_radius(X,P):
 #r,dx,dy = get_radius(np.array([xi,yi]).T,np.array([xi,yi]).T)
 
 def get_qpw(X, P, dr, nu):
-    # Compute the Green's functions for all (X;P) combinations
-    
-    r,dx,dy = get_radius(X, P);
+    """
+    Compute the Green's functions for all (X;P) combinations
+    X should be even grid, and P can be scattered
+    """
+    r,dx,dy = get_radius(X, P); 
     logr = np.log(r+dr);  # Add fudge dr term
     r2 = np.square((r+dr),dtype=np.float32)
     q = np.multiply((3 - nu), logr,dtype=np.float32)  + np.divide((1+nu)*(dy**2),r2,dtype=np.float32)

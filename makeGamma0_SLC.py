@@ -19,6 +19,8 @@ from matplotlib import pyplot as plt
 import cv2
 import os
 import time
+import util
+from util import show
 #from mroipac.filter.Filter import Filter
 
 doPS = True # Setting this to False will make gamma0 all ones.  
@@ -32,23 +34,16 @@ if doPS:
     dates = params['dates']
     
     # Make the gaussian filter we'll convolve with ifg
-    rx = 8
-    ry = 8
-    rx2 = np.floor(rx*3)
-    ry2 = np.floor(ry*3)
-    gausx = np.exp( np.divide( -np.square(np.arange(-rx2,rx2)), np.square(rx)));
-    gausy = np.exp( np.divide( -np.square(np.arange(-ry2,ry2)), np.square(ry)));
-    gaus = gausx[:, np.newaxis] * gausy[np.newaxis, :]
-    gaus -= gaus.min()
-    gaus  /= np.sum(gaus.flatten())
-    del(rx,ry,rx2,ry2,gausx,gausy)
+    gaus = util.gaussian_kernel(8,8,4,4)
+    #show(gaus)
+        
     # get slc example image (extract from an xml file)
     f = params['slcdir'] +'/'+ dates[0] + '/' + dates[0] + '.slc.full'
     slcImage = isceobj.createSlcImage()
     slcImage.load(f + '.xml')
     intimg = isceobj.createIntImage()
-    intimg.width = slcImage.width
-    intimg.length = slcImage.length
+    intimg.width = params['nx'] # if cropping, this will be the crop width
+    intimg.length = params['ny']
     
     
     # Find SLCs with zero size or that don't exist.  And find what size they should be. 
@@ -76,7 +71,7 @@ if doPS:
     for ii,d in enumerate(dates[:-1]): 
         if os.path.isfile(params['slcdir'] + '/' + d + '/fine_diff.int'):   
             if os.path.getsize(params['slcdir'] + '/' + d + '/fine_diff.int')<medSize:
-                os.system('rm ' + params['slcdir'] + '/' + d + '/fine*')
+                # os.system('rm ' + params['slcdir'] + '/' + d + '/fine*')
                 print('removed ' + params['slcdir'] + '/' + d + '/fine_diff.int. File size too small. May be corrupt.' )
     
     print('\nFile sizes should be ' + str(medSize))
@@ -92,6 +87,7 @@ if doPS:
             #save diff ifg
             intImage = intimg.clone() # Copy the interferogram image from before
             intImage.filename = params['slcdir'] + '/' + d + '/fine_diff.int'
+            
             intImage.dump(intImage.filename + '.xml') # Write out xml
             fid=open(intImage.filename,"wb+")
             print('working on ' + d)
@@ -101,13 +97,13 @@ if doPS:
     #        os.system('fixImageXml.py -i ' + f + ' -f')
             slcImage = isceobj.createSlcImage()
             slcImage.load(f + '.xml')
-            slc1 = slcImage.memMap()[:,:,0]
+            slc1 = slcImage.memMap()[cropymin:cropymax,cropxmin:cropxmax,0]
             f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
     #        os.system('fixImageXml.py -i ' + f + ' -f')
     
             slcImage = isceobj.createSlcImage()
             slcImage.load(f + '.xml')
-            slc2 = slcImage.memMap()[:,:,0]
+            slc2 = slcImage.memMap()[cropymin:cropymax,cropxmin:cropxmax,0]
             ifg = np.multiply(slc1,np.conj(slc2))
             ifg_real = np.real(ifg)
             ifg_imag = np.imag(ifg)
@@ -132,7 +128,7 @@ if doPS:
             print(d + ' already exists.')
         #mad = lambda x: np.sqrt(np.nanmedian(abs(x - np.nanmedian(x,axis=0))**2),axis=0d)
     
-    nblocks = 40 # increase the nblocks because this part is more memory intensive
+    nblocks = 6 # increase the nblocks because this part is more memory intensive
     
     gamma0 =np.zeros((ny,nx)).astype(np.float32)
     # Make a stack of the diff images (memory mapped )
@@ -143,7 +139,6 @@ if doPS:
     blocks = np.linspace(0,params['ny'],nblocks).astype(int)
     print('Processing gamma0 image in separate blocks.')
     for ii in np.arange(0,len(blocks)-1):
-        print(str(ii) + '/' + str(len(blocks)) + ' blocks processed.')
         diff_stack = np.zeros((len(dates[:-1]),nx,(blocks[ii+1]-blocks[ii]))).astype(np.float32)
         for jj,d in enumerate(dates[:-1]): 
             diff_file = params['slcdir'] + '/' + d + '/fine_diff.int'
@@ -156,7 +151,8 @@ if doPS:
     #        gamma0[blocks[ii]:blocks[ii+1],0:nx] = np.zeros(gamma0[blocks[ii]:blocks[ii+1],0:nx].shape)
     #    else:
         gamma0[blocks[ii]:blocks[ii+1],0:nx] =np.nanvar(np.asarray(np.exp(diff_stack)), axis=0).T
-     
+        print(str(ii+1) + '/' + str(len(blocks)) + ' blocks processed.')
+
     
     # plt.imshow( -(gamma0/np.nanmax(gamma0)) +1 )
     

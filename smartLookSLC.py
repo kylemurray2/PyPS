@@ -17,9 +17,13 @@ from matplotlib import pyplot as plt
 import cv2
 import os
 import timeit
+import glob as glob
+import util
 
 filterFlag = True
-filterStrength = '.5'
+unwrap = True
+filterStrength = '.3'
+fixImage = False
 
 nblocks = 1
 
@@ -41,16 +45,20 @@ y=yy.flatten()
 x=xx.flatten()
 del(xx,yy)
 
+# for p in pairs:
+#     os.system('rm -r ' + intdir + '/' + p)
+
+if fixImage:
+    slcList = glob.glob(slcdir + '/*/*full')
+    for fname in slcList:
+        os.system('fixImageXml.py -i ' + fname + ' -f')
+
 # Load the gamma0 file
 f = params['tsdir'] + '/gamma0.int'
 intImage = isceobj.createIntImage()
 intImage.load(f + '.xml')
 
-if crop: 
-    gamma0= intImage.memMap()[cropymin:cropymax,cropxmin:cropxmax,0] 
-else:
-    gamma0= intImage.memMap()[:,:,0] 
-
+gamma0= intImage.memMap()[:,:,0] 
 gamma0=gamma0.copy() # mmap is readonly, so we need to copy it.
 gamma0[np.isnan(gamma0)] = 0
 
@@ -72,9 +80,9 @@ if not os.path.isfile('gam.npy'):
     gam.tofile(out.filename) # Write file out
     out.renderHdr()
     out.renderVRT()
-    gam[geom['hgt_ifg'] < seaLevel] = 0
+    # gam[geom['hgt_ifg'] < seaLevel] = 0
     np.save('gam.npy',gam)
-    del(gam)
+    # del(gam)
 else: 
     print('gam.npy already exists')
 
@@ -89,6 +97,7 @@ pair = params['pairs2'][0]
 
 for pair in params['pairs2']: #loop through each ifg and save to 
     if not os.path.isdir(params['intdir'] + '/' + pair):
+        print(pair)
         os.system('mkdir ' + params['intdir']+ '/' + pair)
     if not os.path.isfile(params['intdir'] + '/' + pair + '/fine_lk.int'):
         print('working on ' + pair)
@@ -127,29 +136,24 @@ for pair in params['pairs2']: #loop through each ifg and save to
             d2 = pair[9:]
             d = pair[0:8]
             #load ifg real and imaginary parts
-            if crop:
-                f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full.crop'
-            else:
-                f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full'
+
+            f = params['slcdir'] +'/'+ d + '/' + d + '.slc.full'
     #        os.system('fixImageXml.py -i ' + f + ' -f')
     
             slcImage = isceobj.createSlcImage()
             slcImage.load(f + '.xml')
-            slc1 = slcImage.memMap()[start:stop,:,0]
-            if crop:
-                f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full.crop'
-            else:
-                f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
+            slc1 = slcImage.memMap()[cropymin:cropymax,cropxmin:cropxmax,0][start:stop,:]
+
+            f = params['slcdir'] +'/'+ d2 + '/' + d2 + '.slc.full'
     #        os.system('fixImageXml.py -i ' + f + ' -f')
     
             slcImage = isceobj.createSlcImage()
             slcImage.load(f + '.xml')
-            slc2 = slcImage.memMap()[start:stop,:,0]
+            slc2 = slcImage.memMap()[cropymin:cropymax,cropxmin:cropxmax,0][start:stop,:]
             ifg = np.multiply(slc1,np.conj(slc2))
             
             # del(slc1,slc2)
-            
-            
+
             # multiply by gamma0 (weight the values)
             ifg_real = np.real(ifg) * gamma0[start:stop,:]
             ifg_imag = np.imag(ifg) * gamma0[start:stop,:]
@@ -193,8 +197,11 @@ for pair in params['pairs2']: #loop through each ifg and save to
             name = params['intdir'] + '/' + pair + '/fine_lk.int'
             corname = params['intdir'] + '/' + pair + '/cor.r4'
             offilt =  params['intdir'] + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/km/Software/test/isce2/contrib/stack/topsStack/FilterAndCoherence.py -i ' + name + ' -f ' +  offilt + ' -s ' + filterStrength + ' > log'
+            command = 'python /home/km/Software/test/isce2/contrib/stack/topsStack/FilterAndCoherence.py -c ' + corname + ' -i ' + name + ' -f ' +  offilt + ' -s ' + filterStrength + ' > log'
             os.system(command)
+            # if unwrap:
+            #     unwName = params['intdir']+ '/' + pair + '/filt.unw'
+            #     util.unwrap_snaphu(name,corname,unwName,nyl,nxl)
         # print("The time difference is :", timeit.default_timer() - starttime)      
 
 # plt.figure();plt.imshow(np.angle(cpx),cmap='hsv')        

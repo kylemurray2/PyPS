@@ -37,7 +37,9 @@ def getTime(path,frame):
     return int(hour),int(minute), Lon, Lat
    
 
-def reGrid(inputImageStack,outputX,outputY):
+
+
+def reGridStack(inputImageStack,outputX,outputY):
     '''
     inputImageStack: (m-rows,n-colums,k-stack)
     outputX: output coordinates (probably lon_ifg) (m-out,n-out)
@@ -95,7 +97,7 @@ def improfile(z, x0, y0, x1, y1):
     x, y = np.linspace(x0, x1, length), np.linspace(y0, y1, length)
     
     # Extract the values along the line
-    zi = z[y.astype(np.int), x.astype(np.int)]
+    zi = z[y.astype(int), x.astype(int)]
     return zi
 
 
@@ -106,7 +108,7 @@ def ll2pixel(lon_ifg,lat_ifg,lon,lat):
     """
     x_pts = list()
     y_pts = list()
-    
+
     if np.nanmean(lon_ifg) * lon[0] <0:
         print('WARNING: you may need to subtract 360')
         
@@ -432,7 +434,7 @@ def estimate_dem_error(ts0, G0, tbase, date_flag=None, phase_velocity=False):
     return delta_z, ts_cor, ts_res
 
 
-def viewIFGstack(flip=True):
+def viewIFGstack(flip=True,chain=True):
     ''' look at all the ifgs with napari'''
     
     import numpy as np
@@ -441,9 +443,14 @@ def viewIFGstack(flip=True):
     
     params = np.load('params.npy',allow_pickle=True).item()
     
-    stack = np.zeros((len(params['pairs']),params['nyl'],params['nxl']))
-    for ii in range(len(params['pairs'])):
-        p = params['pairs'][ii]
+    if chain:
+        pairs = params['pairs']
+    else:
+        pairs = params['pairs2']
+    
+    stack = np.zeros((len(pairs),params['nyl'],params['nxl']))
+    for ii in range(len(pairs)):
+        p = pairs[ii]
         f = './merged/interferograms/' + p + '/fine_lk_filt.int'
         intImage = isceobj.createIntImage()
         intImage.load(f + '.xml')
@@ -456,7 +463,7 @@ def viewIFGstack(flip=True):
     viewer = napari.view_image(stack,colormap='RdYlBu')
 
 
-def viewUNWstack(flip=True):
+def viewUNWstack(flip=True,chain=True):
     ''' look at all the ifgs with napari'''
     
     import numpy as np
@@ -466,9 +473,16 @@ def viewUNWstack(flip=True):
     params = np.load('params.npy',allow_pickle=True).item()
     gam = np.load('gam.npy')
     
-    stack = np.zeros((len(params['pairs2']),params['nyl'],params['nxl']))
-    for ii in range(len(params['pairs2'])):
-        p = params['pairs'][ii]
+    if chain:
+        pairs = params['pairs']
+    else:
+        pairs = params['pairs2']
+    
+    
+    
+    stack = np.zeros((len(pairs),params['nyl'],params['nxl']))
+    for ii in range(len(pairs)):
+        p = pairs[ii]
         f = './merged/interferograms/' + p + '/filt.unw'
         intImage = isceobj.createImage()
         intImage.dataType='FLOAT'
@@ -482,8 +496,16 @@ def viewUNWstack(flip=True):
             stack[ii,:,:] = unw
     viewer = napari.view_image(stack,colormap='RdYlBu')
 
+    # fig,ax = plt.subplots(4,8)
+    # kk=0
+    # for a in ax.ravel():
+    #     a.imshow(stack[kk,:,:])
+    #     a.axes.xaxis.set_visible(False)
+    #     a.axes.yaxis.set_visible(False)
+    # plt.tight_layout()
 
-def viewCORstack(flip=True):
+
+def viewCORstack(flip=True,chain=True):
     ''' look at all the ifgs with napari'''
     
     import numpy as np
@@ -493,10 +515,15 @@ def viewCORstack(flip=True):
     params = np.load('params.npy',allow_pickle=True).item()
     gam = np.load('gam.npy')
     
-    stack = np.zeros((len(params['pairs']),params['nyl'],params['nxl']))
-    for ii in range(len(params['pairs'])):
-        p = params['pairs'][ii]
-        f = './merged/interferograms/' + p + '/cor_lk.r4'
+    if chain:
+        pairs = params['pairs']
+    else:
+        pairs = params['pairs2']
+        
+    stack = np.zeros((len(pairs),params['nyl'],params['nxl']))
+    for ii in range(len(pairs)):
+        p = pairs[ii]
+        f = './merged/interferograms/' + p + '/cor2.r4'
         intImage = isceobj.createImage()
         intImage.dataType='FLOAT'
         intImage.load(f + '.xml')
@@ -519,7 +546,7 @@ def getUNW(pair):
     intImage.load(f + '.xml')
     unw = intImage.memMap()[:,:,0]
     unw = unw.copy()
-    unw[gam==0] = 0
+    unw[gam==0] = np.nan
     return unw
 
 def getConCom(msk, minimumPixelsInRegion=1000):
@@ -545,3 +572,402 @@ def getConCom(msk, minimumPixelsInRegion=1000):
         newLabels[labels==lab] = ii
         
     return labels
+
+
+
+def coregister(img1,img2):
+    """
+    Coregister two images
+    
+    inputs
+        img1: reference image you want to align img2 to
+        img2: image you want to be aligned 
+    outputs:
+        img2_coreg: the coregistered version of img2
+        H: the homography matrix
+        
+    Based on this tutorial:
+        https://www.sicara.fr/blog/2019-07-16-image-registration-deep-learning
+    
+    The KAZE algorithm is written up here (AKAZE is a faster version of that):
+        http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.304.4980&rep=rep1&type=pdf
+        
+    Written: 4/20/2022 @ 4:20:69
+
+    """
+    
+    from matplotlib import pyplot as plt
+    import cv2 as cv
+    
+    # img1 = cv.imread('/home/km/Pictures/Murray_175px.jpg', cv.IMREAD_GRAYSCALE)  # referenceImage
+    # img2 = cv.imread('/home/km/Pictures/Murray2px.jpg', cv.IMREAD_GRAYSCALE)  # sensedImage
+    
+    img1_8 = cv.normalize(src=img1, dst=None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8U)
+    img2_8 = cv.normalize(src=img2, dst=None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8U)
+    
+    
+    # Initiate AKAZE detector
+    akaze = cv.AKAZE_create()
+    # Find the keypoints and descriptors with SIFT
+    kp1, des1 = akaze.detectAndCompute(img1_8, None)
+    kp2, des2 = akaze.detectAndCompute(img2_8, None)
+    
+    # BFMatcher with default params
+    bf = cv.BFMatcher()
+    matches = bf.knnMatch(des1, des2, k=2)
+    
+    # Apply ratio test
+    good_matches = []
+    for m,n in matches:
+        if m.distance < 0.75*n.distance:
+            good_matches.append([m])
+            
+    # Draw matches
+    img3 = cv.drawMatchesKnn(img1_8,kp1,img2_8,kp2,good_matches,None,flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    cv.imwrite('matches.jpg', img3)
+    
+    # Select good matched keypoints
+    ref_matched_kpts = np.float32([kp1[m[0].queryIdx].pt for m in good_matches])
+    sensed_matched_kpts = np.float32([kp2[m[0].trainIdx].pt for m in good_matches])
+    
+    # Compute homography
+    H, status = cv.findHomography(sensed_matched_kpts, ref_matched_kpts, cv.RANSAC,5.0) 
+    
+    # Warp image
+    # warped_image = cv.warpPerspective(img2_8, H, (img2_8.shape[1], img2_8.shape[0]))
+    img2_coreg = cv.warpPerspective(img2, H, (img1.shape[1], img1.shape[0]))
+    
+    fig,ax = plt.subplots(2,2)
+    ax[0,0].imshow(img1);ax[0,0].set_title('img1')
+    ax[0,1].imshow(img2);ax[0,1].set_title('img2')
+    ax[1,0].imshow(img2_coreg);ax[1,0].set_title('img2_coreg')
+    ax[1,1].imshow(img1-img2_coreg,vmin=-100,vmax=100,cmap='RdBu_r');ax[1,1].set_title('img1 - img2_coreg')
+    
+    meanRes = np.nanmean(abs(img1-img2_coreg))
+    print('Mean Residual: ' + str(meanRes))
+
+    return img2_coreg, H
+    
+def show(img,title=None,cmap='magma'):
+    """
+    just plots the image so you don't have to type as much. For quickly viewing.
+    """
+    from matplotlib import pyplot as plt
+    plt.figure()
+    plt.imshow(img,cmap=cmap)
+    plt.show()
+    if title:
+        plt.title(title)
+
+
+def gaussian_kernel(Sx, Sy, sig_x, sig_y):
+    if np.mod(Sx,2) == 0:
+        Sx = Sx + 1
+
+    if np.mod(Sy,2) ==0:
+            Sy = Sy + 1
+
+    x,y = np.meshgrid(np.arange(Sx),np.arange(Sy))
+    x = x + 1
+    y = y + 1
+    x0 = (Sx+1)/2
+    y0 = (Sy+1)/2
+    fx = ((x-x0)**2.)/(2.*sig_x**2.)
+    fy = ((y-y0)**2.)/(2.*sig_y**2.)
+    k = np.exp(-1.0*(fx+fy))
+    a = 1./np.sum(k)
+    k = a*k
+    return k
+
+def convolve(data, kernel):
+    import cv2
+    R = cv2.filter2D(data.real,-1,kernel)
+    Im = cv2.filter2D(data.imag,-1,kernel)
+
+    return R + 1J*Im
+
+def write_xml(filename,width,length,bands,dataType,scheme):
+    import isceobj
+    img=isceobj.createImage()
+    img.setFilename(filename)
+    img.setWidth(width)
+    img.setLength(length)
+    img.setAccessMode('Read')
+    img.bands=bands
+    img.dataType=dataType
+    img.scheme = scheme
+    img.renderHdr()
+    img.renderVRT()
+    return
+
+def writeISCEimg(img,outName,nBands,width,length):
+    '''
+    quick way to write a file with an xml file. Automatically checks datatype
+    ''' 
+    import isceobj
+    fidc=open(outName,"wb")
+    fidc.write(img)
+    #write out an xml file for it
+    out = isceobj.createIntImage() # Copy the interferogram image from before
+    
+    if img.dtype=='float32':
+        out.dataType = 'FLOAT'
+    else:
+        out.dataType = 'CFLOAT'
+    
+    out.bands = 1
+    out.filename = outName
+    out.width = width
+    out.length = length
+    out.dump(outName + '.xml') # Write out xml
+    out.renderHdr()
+    out.renderVRT()
+
+def filtAndCoherence(infileIFG,filtFileOut,corFileOut,filterStrength):
+    '''
+    Runs filtering and coherence estimation
+    '''
+    
+    import FilterAndCoherence as fc
+    if filterStrength <= 0:
+        print('Skipping filtering because filterStrength is 0')
+    else:
+        fc.runFilter(infileIFG, filtFileOut, filterStrength)    
+    
+    fc.estCoherence(filtFileOut, corFileOut)
+
+def unwrap_snaphu(intfile,corfile,unwfile,length, width,rlks,alks):
+    '''
+    Inputs:
+        intfile
+        corfile
+        length,width: length and width of intfile
+        rlks,alks: give rlks and alks just to record it in the xml file
+    Outputs:
+        unwfile: writes unw image to this file
+
+    '''
+    
+    from contrib.Snaphu.Snaphu import Snaphu
+
+    altitude = 800000.0
+    earthRadius = 6371000.0
+    wavelength = 0.056
+    defomax = 4.0
+    maxComponents = 20
+    
+    snp = Snaphu()
+    snp.setInitOnly(False)
+    snp.setInput(intfile)
+    snp.setOutput(unwfile)
+    snp.setWidth(width)
+    snp.setCostMode('SMOOTH')
+    snp.setEarthRadius(earthRadius)
+    snp.setWavelength(wavelength)
+    snp.setAltitude(altitude)
+    snp.setCorrfile(corfile)
+    snp.setInitMethod('MST')
+    snp.dumpConnectedComponents(True)
+    snp.setMaxComponents(maxComponents)
+    snp.setDefoMaxCycles(defomax)
+    snp.setRangeLooks(rlks)
+    snp.setAzimuthLooks(alks)
+    snp.setCorFileFormat('FLOAT_DATA')
+    snp.prepare()
+    snp.unwrap()
+    write_xml(unwfile, width, length, 2 , "FLOAT",'BIL')
+    return
+
+def getWaterMask(DEMfilename, lon_ifg, lat_ifg, outputfilename):
+    import createWaterMask as wm
+    bbox = wm.dem2bbox(DEMfilename)
+    wm.download_waterMask(bbox, DEMfilename, fill_value=-1)
+    
+    
+def tsFilt(alld, dec_year, N=5, desiredPeriod = 1):
+    '''
+    Temporal filter
+    Inputs:
+        alld: len(time) X n X m matrix
+        N: Filter order
+        desiredPeriod: roughly the cutoff period in years. (Anything shorter 
+            than this value will be filtered out).
+    Output:
+        alldFilt
+   
+    Wn is the Cutoff frequency between 0 and 1.  0 is infinitely smooth and 1 is the original. 
+        this is the frequency multiplied by the nyquist rate. 
+        if we have 25 samples per year, then the nyquist rate would be ~12hz. So if we make Wn=.5
+        we will have filtered to 6hz (letting signals with wavelengths of 2 months or longer).
+        If we make wn=1/12 then we will filter to 1hz (letting only signals with wavelengths of 1 year).
+    '''
+    import scipy.signal as signal
+
+    dec_year = np.asarray(dec_year)
+    samplesPerYear = len(dec_year) / (dec_year.max()-dec_year.min())
+    nyquistRate = samplesPerYear/2 #this is the highest freq we can resolve with our sampling rate
+    Wn = 1/(desiredPeriod * nyquistRate)
+    B, A = signal.butter(N, Wn, output='ba')
+    
+    alldFilt = signal.filtfilt(B,A, alld,axis=0)
+    alldFilt[alldFilt==0]=np.nan
+    
+    return alldFilt
+
+def tsFilt1d(ts, dec_year, N=5, desiredPeriod = 1):
+    '''
+    Temporal filter
+    Inputs:
+        ts: 1d time series corresponding to dec_year dates
+        N: Filter order
+        desiredPeriod: roughly the cutoff period in years. (Anything shorter 
+            than this value will be filtered out).
+    Output:
+        alldFilt
+   
+    Wn is the Cutoff frequency between 0 and 1.  0 is infinitely smooth and 1 is the original. 
+        this is the frequency multiplied by the nyquist rate. 
+        if we have 25 samples per year, then the nyquist rate would be ~12hz. So if we make Wn=.5
+        we will have filtered to 6hz (letting signals with wavelengths of 2 months or longer).
+        If we make wn=1/12 then we will filter to 1hz (letting only signals with wavelengths of 1 year).
+    '''
+    import scipy.signal as signal
+
+    dec_year = np.asarray(dec_year)
+    samplesPerYear = len(dec_year) / (dec_year.max()-dec_year.min())
+    nyquistRate = samplesPerYear/2 #this is the highest freq we can resolve with our sampling rate
+    Wn = 1/(desiredPeriod * nyquistRate)
+    B, A = signal.butter(N, Wn, output='ba')
+    
+    tsF = signal.filtfilt(B,A, ts,axis=0)
+    tsF[tsF==0]=np.nan
+    
+    return tsF
+
+
+def getLOSvec(psi,theta):
+    '''
+    Given the flight azimuth and the los azimuth angle, return LOS vector
+    theta should be the angle from ground normal
+    psi should be the angle from EAST (X) of the flight direction angle. (not the look direction)
+    
+    In ISCE:
+    psi is from the second band in the los.rdr file (and also in the az_lk.rdr file from PyPS)
+    theta is from the second band of incLocal.rdr file (which is the angle from the surface normal vector)
+    
+    '''
+    psi+=90 # Add 90 degrees to get the look direction from the flight direction
+    losA=np.zeros((3,))
+    losA[0] =  np.sin(np.deg2rad(theta)) * np.cos(np.deg2rad(psi))
+    losA[1] =  np.sin(np.deg2rad(theta)) * np.sin(np.deg2rad(psi))
+    losA[2] =  np.cos(np.deg2rad(theta))
+    return losA
+    
+    
+def invertVertHor(asc,des,psi_a,theta_a,psi_d,theta_d,smooth):
+    '''
+    damped least squares inversion of ascending/descending LOS data
+       returns horizontal (East-west) and Vertical displacements
+    IN:
+        asc: value of ascending ifg at a pixel
+        des: value of descending ifg at a pixel
+        psi_a/d: azimuth direction of asc/des 
+        theta_a/d: incidence angle of asc/des
+        smooth: damping factor 
+    OUT:
+        vertHor: east-west and vertical deformation 
+    '''
+    
+    losA = getLOSvec(psi_a,theta_a)
+    losD = getLOSvec(psi_d,theta_d)
+
+    o = np.array([asc,des]).T
+    o = np.concatenate((o,np.array([0,0])),axis=0)
+    # Define unit basis vectors
+    mx = np.array([1,0,0])
+    my = np.array([0,1,0])
+    mz = np.array([0,0,1])
+    
+    A = np.array([[np.dot(losA,mx), np.dot(losA,mz)],
+                  [np.dot(losD,mx), np.dot(losD,mz)],
+                  [smooth,          0              ],
+                  [0,               smooth         ]])
+    
+    # A = np.array([[np.dot(losA,mx), np.dot(losA,my), np.dot(losA,mz)],
+    #               [np.dot(losD,mx),np.dot(losD,my),np.dot(losD,mz)],
+    #               [smooth,              0,         0              ],
+    #               [0,              smooth,          0              ],
+    #               [0,              0,              smooth         ]])
+    
+    Aa = np.dot( np.linalg.inv(np.dot(A.T,A)), A.T)
+    vertHor = np.dot(Aa,o)
+    return vertHor
+
+def geocode(filename):
+    ''' Geocodes the filename and outputs geocoded image in that directory 
+        with .geo. I think filename can be a list of multiple names.
+    '''
+    
+    import geocodeIsce
+    import glob
+    # setupParams = np.load('setupParams.npy',allow_pickle=True).item()
+    
+    params = np.load('params.npy',allow_pickle=True).item()
+    geom = np.load('geom.npy',allow_pickle=True).item()
+    
+    minlon = geom['lon_ifg'].min()
+    maxlon = geom['lon_ifg'].max()
+    minlat = geom['lat_ifg'].min()
+    maxlat = geom['lat_ifg'].max()
+    dem = glob.glob('./DEM/*wgs84')[0]
+    bbox1 = [minlat,maxlat, minlon,maxlon]
+    
+    class inpsArgs():
+        prodlist = filename
+        bbox = bbox1
+        demfilename = dem
+        reference = params['workdir'] + '/reference'
+        secondary = params['workdir'] + '/reference'
+        numberRangeLooks = params['rlks']
+        numberAzimuthLooks = params['alks']
+        
+    geocodeIsce.runGeocode(inpsArgs, inpsArgs.prodlist, inpsArgs.bbox, inpsArgs.demfilename, is_offset_mode=False)
+
+def geocodeKM(img,method='linear'):
+    
+    '''
+    This is actually a geocode hack. but better to use the geocode function above
+    '''
+    
+    from scipy.interpolate import griddata 
+
+    params = np.load('params.npy',allow_pickle=True).item()
+    geom = np.load('geom.npy',allow_pickle=True).item()
+    
+    minlon = geom['lon_ifg'].min()
+    maxlon = geom['lon_ifg'].max()
+    minlat = geom['lat_ifg'].min()
+    maxlat = geom['lat_ifg'].max()
+    
+    ny = int(params['nyl']*2)
+    nx = int(ny*1.3)
+
+    xx = np.linspace(minlon,maxlon,nx)
+    yy = np.linspace(minlat,maxlat,ny)
+    XX,YY = np.meshgrid(xx,yy)
+    imgRegrid = griddata((geom['lon_ifg'].ravel(),geom['lat_ifg'].ravel()), img.ravel(), (XX,YY), method=method)
+    imgRegrid = np.flipud(imgRegrid)
+    return imgRegrid
+
+def orderAxes(inputArray,nx,ny):
+    '''  Rearrange axes order from small to big '''
+    imShape = np.asarray(inputArray.shape)
+    smaA = np.where(imShape==imShape.min())[0][0]
+    inputArray = np.moveaxis(inputArray,smaA,0)
+    imShape = np.asarray(inputArray.shape)
+    bigA = np.where(imShape==imShape.max())[0][0]
+    if nx>ny:
+        inputArray = np.moveaxis(inputArray,bigA,2)
+    else:
+        inputArray = np.moveaxis(inputArray,bigA,1)
+    return inputArray

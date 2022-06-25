@@ -19,6 +19,7 @@ from mroipac.looks.Looks import Looks
 from scipy.interpolate import griddata 
 import cv2
 from scipy import signal
+import util
 
 #<><><><><><><><><><><><>Set these variables><><><><><><><><><><><><><><><
 # Define area of interest
@@ -33,12 +34,12 @@ from scipy import signal
 # ifg_mode = False
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 import localParams
-workdir, skip, alks, rlks, seaLevel, ifg_mode,crop,cropymin,cropymax,cropxmin,cropxmax = localParams.getLocalParams()
+workdir, skip, alks, rlks, seaLevel, ifg_mode,crop,cropymin,cropymax,cropxmin,cropxmax,flight = localParams.getLocalParams()
 
 plot=True
 plt.close('all')
-doDownlook = False
-pairs2Overlap = 5
+doDownlook = True
+pairs2Overlap = 1
 lam = 0.056 # 0.056 for c-band
 mergeddir=workdir + '/merged'
 intdir = mergeddir + '/interferograms'
@@ -54,16 +55,27 @@ if not os.path.isdir(workdir + '/Figs'):
 geomList = glob.glob(mergeddir + '/geom_reference/*full')
 slcList = glob.glob(slcdir + '/*/*full')
 blList = glob.glob(mergeddir + '/baselines/????????/????????')
-if doDownlook:
-    for fname in slcList:
-        os.system('fixImageXml.py -i ' + fname + ' -f')
-    for fname in geomList:
-        os.system('fixImageXml.py -i ' + fname + ' -f')
+
+# # Move the newer SLCs over 
+# slclate = glob.glob('../1175_late/merged/SLC/*/*full')
+# for fname in slclate:
+#     if os.path.exists('./merged/SLC/' + fname[-17:-9]):
+#         print('i')
+#         # print(fname)
+#         # os.system('cp ' + fname + ' ./merged/SLC/' + fname[-17:-9] + '/')
+#     else:
+#         print(fname)
+#         os.system('cp -r ' + fname[0:-18] + ' ./merged/SLC/')
+        
+        
+# if doDownlook:
+for fname in slcList:
+    os.system('fixImageXml.py -i ' + fname + ' -f')
+for fname in geomList:
+    os.system('fixImageXml.py -i ' + fname + ' -f')
     # for fname in blList:
     #     os.system('fixImageXml.py -i ' + fname + ' -f')
         
-
-
 
 if ifg_mode:
     pairs1=list()
@@ -119,19 +131,23 @@ dn0 = dn-dn[0] # make relative to first date
         
 nd = len(pairs)
 # rename geometry files to add 'full'
-os.system('mv merged/geom_reference/hgt.rdr merged/geom_reference/hgt.rdr.full')
-os.system('mv merged/geom_reference/lat.rdr merged/geom_reference/lat.rdr.full')
-os.system('mv merged/geom_reference/lon.rdr merged/geom_reference/lon.rdr.full')
-os.system('mv merged/geom_reference/incLocal.rdr merged/geom_reference/incLocal.rdr.full')
-os.system('mv merged/geom_reference/los.rdr merged/geom_reference/los.rdr.full')
-os.system('mv merged/geom_reference/shadowMask.rdr merged/geom_reference/shadowMask.rdr.full')
+if os.path.isfile('merged/geom_reference/hgt.rdr'):
+    os.system('mv merged/geom_reference/hgt.rdr merged/geom_reference/hgt.rdr.full')
+    os.system('mv merged/geom_reference/lat.rdr merged/geom_reference/lat.rdr.full')
+    os.system('mv merged/geom_reference/lon.rdr merged/geom_reference/lon.rdr.full')
+    os.system('mv merged/geom_reference/incLocal.rdr merged/geom_reference/incLocal.rdr.full')
+    os.system('mv merged/geom_reference/los.rdr merged/geom_reference/los.rdr.full')
+    os.system('mv merged/geom_reference/shadowMask.rdr merged/geom_reference/shadowMask.rdr.full')
+else:
+    print('rdr files have already been renamed to full')
 
 # Get width and length
-f_lon = mergeddir + '/geom_reference/lon.rdr.full.vrt'
-
 f_lon = mergeddir + '/geom_reference/lon.rdr.full'
 gImage = isceobj.createIntImage()
 gImage.load(f_lon + '.xml')
+nyf = gImage.length
+nxf = gImage.width
+
 
 if crop:
     ny = cropymax-cropymin
@@ -139,51 +155,40 @@ if crop:
 else:
     ny = gImage.length
     nx = gImage.width
+    cropxmin=0
+    cropxmax=nx
+    cropymin=0
+    cropymax=ny
 
-if crop:
-    for d in dates:
-        f = slcdir +'/'+ d + '/' + d + '.slc.full'
-        if not os.path.isfile(f + '.crop'):
 
-    #        os.system('fixImageXml.py -i ' + f + ' -f')
-            slcImage = isceobj.createSlcImage()
-            slcImage.load(f + '.xml')
-            slc1 = slcImage.memMap()[cropymin:cropymax,cropxmin:cropxmax,0]
-            
-            slcImagec = isceobj.createSlcImage()
-            
-            slcImagec.filename = f+'.crop'
-            slcImagec.width =cropxmax-cropxmin
-            slcImagec.length =cropymax-cropymin
-            slcImagec.dump(slcImagec.filename + '.xml') # Write out xml
-            
-            slc1.tofile(slcImagec.filename) # Write file out
-            slcImagec.finalizeImage()
+
 
 file_list = list(['lat','lon','hgt','los','shadowMask','incLocal']) 
-
 if crop:
     for f in file_list:
         infile = mergeddir + '/geom_reference/' + f + '.rdr.full'
         imgi = isceobj.createImage()
         imgi.load(infile+'.xml')
-        geomIm = imgi.memMap()[cropymin:cropymax,cropxmin:cropxmax,0]
-        imgo = isceobj.createImage()
-        imgo.load(infile+'.xml')
+        # print(imgi.memMap().shape)
+        
+        # Rearrange axes order from small to big 
+        geomIm = util.orderAxes(imgi.memMap(),nx,ny)
+        geomIm = geomIm[:,cropymin:cropymax,cropxmin:cropxmax]
+
+        imgo = imgi.clone()
         imgo.filename = infile+'.crop'
         imgo.width = cropxmax-cropxmin
-        imgo.length =cropymax-cropymin
+        imgo.length = cropymax-cropymin
         imgo.dump(imgo.filename+'.xml')
-        
         geomIm.tofile(imgo.filename)
-
-
+        imgo.finalizeImage()
+        del(geomIm)
+        
 if doDownlook:
     def downLook(infile, outfile,alks,rlks):
         inImage = isceobj.createImage()
         inImage.load(infile + '.xml')
         inImage.filename = infile
-    
         lkObj = Looks()
         lkObj.setDownLooks(alks)
         lkObj.setAcrossLooks(rlks)
@@ -191,18 +196,20 @@ if doDownlook:
         lkObj.setOutputFilename(outfile)
         lkObj.looks()
     for f in file_list:
-
         if crop:
             infile = mergeddir + '/geom_reference/' + f + '.rdr.full.crop'
         else:
             infile = mergeddir + '/geom_reference/' + f + '.rdr.full'
         
         outfile = mergeddir + '/geom_reference/' + f + '_lk.rdr'
+        
         if not os.path.isfile(outfile):
             downLook(infile, outfile,alks,rlks)
         else:
             print(outfile + ' already exists')
-    
+
+nxl = nx//rlks
+nyl = ny//alks
     
 # Get bounding coordinates (Frame)
 f_lon_lk = mergeddir + '/geom_reference/lon_lk.rdr'
@@ -212,36 +219,40 @@ f_los_lk = mergeddir + '/geom_reference/los_lk.rdr'
 f_shm_lk = mergeddir + '/geom_reference/shadowMask_lk.rdr'
 f_inc_lk = mergeddir + '/geom_reference/incLocal_lk.rdr'
 
+# LON --------------
 Image = isceobj.createImage()
 Image.load(f_lon_lk + '.xml')
-lon_ifg = Image.memMap()[:,:,0]
+lon_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[0,:,:]
 lon_ifg = lon_ifg.copy().astype(np.float32)
 lon_ifg[lon_ifg==0]=np.nan
 Image.finalizeImage()
 
-nyl,nxl = lon_ifg.shape
 
-
+# LAT --------------
 Image = isceobj.createImage()
 Image.load(f_lat_lk + '.xml')
-lat_ifg = Image.memMap()[:,:,0]
+lat_ifg =util.orderAxes(Image.memMap(),nxl,nyl)[0,:,:]
 lat_ifg = lat_ifg.copy().astype(np.float32)
 lat_ifg[lat_ifg==0]=np.nan
 Image.finalizeImage()
 
+# HGT --------------
 Image = isceobj.createImage()
 Image.load(f_hgt_lk + '.xml')
-hgt_ifg = Image.memMap()[:,:,0]
+hgt_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[0,:,:]
 hgt_ifg = hgt_ifg.copy().astype(np.float32)
 hgt_ifg[hgt_ifg==0]=np.nan
 Image.finalizeImage()
 
+# LOS --------------
 Image = isceobj.createImage()
 Image.load(f_los_lk + '.xml')
 Image.bands=2
 Image.scheme='BSQ'
-los_ifg = Image.memMap()[0,:,:]
-az_ifg = Image.memMap()[1,:,:]
+los_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[0,:,:]
+los_ifg = los_ifg.copy()
+az_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[1,:,:]
+az_ifg = az_ifg.copy()
 Image.finalizeImage()
 
 # Write out a new los file
@@ -284,7 +295,7 @@ az_ifg[az_ifg==0]=np.nan
 Image = isceobj.createImage()
 Image.load(f_shm_lk + '.xml')
 Image.bands=1
-shm_ifg = Image.memMap()[:,0,:]
+shm_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[0,:,:]
 shm_ifg = shm_ifg.copy().astype(np.float32)
 shm_ifg[np.isnan(hgt_ifg)]=np.nan
 Image.finalizeImage()
@@ -293,8 +304,9 @@ Image = isceobj.createImage()
 Image.load(f_inc_lk + '.xml')
 Image.bands=2
 Image.scheme='BSQ'
-inc_ifg1 = Image.memMap()[0,:,:] # relative to the local plane of the ground
-inc_ifg = Image.memMap()[1,:,:] # relative to surface normal vector (this is the one we want I think)
+# inc_ifg1 = Image.memMap()[0,:,:] # relative to the local plane of the ground
+inc_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[1,:,:]# relative to surface normal vector (this is the one we want I think)
+inc_ifg = inc_ifg.copy()
 
 # Write out a new inc file
 incOutname = mergeddir + '/geom_reference/inc_lk.rdr'
@@ -310,7 +322,6 @@ out.length = nyl
 out.dump(incOutname + '.xml') # Write out xml
 out.renderHdr()
 out.renderVRT()
-
 
 inc_ifg = inc_ifg.copy().astype(np.float32)
 inc_ifg[inc_ifg==0]=np.nan
@@ -437,6 +448,7 @@ geom['hgt_ifg'] = hgt_ifg
 geom['los_ifg'] = los_ifg
 geom['shm_ifg'] = shm_ifg
 geom['inc_ifg'] = inc_ifg
+geom['az_ifg'] = az_ifg
 
 np.save('geom.npy',geom)
 
@@ -481,7 +493,7 @@ params['cropxmax'] =     cropxmax
 
 # Save the dictionary
 np.save('params.npy',params)
-plt.close('all')
+# plt.close('all')
 # To load the dictionary later, do this:
 # params = np.load('params.npy').item()
 # locals().update(params) this parses all variables from the dict to local variables

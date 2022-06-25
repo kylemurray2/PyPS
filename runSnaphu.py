@@ -17,18 +17,34 @@ params = np.load('params.npy',allow_pickle=True).item()
 locals().update(params)
 
 geocode = False
-nproc='20'
-ntilerow='2'
-ntilecol='2'
+nproc='16'
+ntilerow='1'
+ntilecol='1'
 rowovrlp='50'
 colovrlp='50'
+
+
+fSizes = []
+for ii,p in enumerate(params['pairs2']): 
+    if os.path.isfile(params['intdir'] + '/' + p + '/' + 'fine_lk.int'):       
+        if os.path.getsize(params['intdir'] + '/' + p + '/' + 'fine_lk.int')==0:
+            print('WARNING: ' + params['intdir'] + '/' + p + ' File size too small. May be corrupt.' )
+            # os.system('rm -r ' + params['intdir'] + '/' + p )
+            
+        else:
+            fSizes.append(os.path.getsize(params['intdir'] + '/' + p + '/' + 'fine_lk.int'))
+            # os.system('rm -r ' + params['intdir'] + '/' + p )
+    else:
+        print(p + '/' + 'fine_lk.int does not exist')
+medSize = np.nanmedian(fSizes)
+sleep(5)
 
 
 
 for ii in tqdm(range(len(params['pairs2']))):
     pair = params['pairs2'][ii]
     infile = params['intdir']+ '/' + pair+'/fine_lk_filt.int'
-    corfile = params['intdir']+ '/' + pair+'/cor_lk.r4'
+    corfile = params['intdir']+ '/' + pair+'/cor.r4'
     outfile = params['intdir']+ '/' + pair+'/filt.unw'
     conncompOut = params['intdir']+ '/' + pair+'/filt.unw.conncomp'
 
@@ -51,7 +67,13 @@ for ii in tqdm(range(len(params['pairs2']))):
         out1.renderVRT()
         out1.finalizeImage()
 
-        
+       
+        intImage = isceobj.createIntImage()
+        intImage.load(infile + '.xml')
+        nxl2= intImage.width
+        # intImage.close()
+
+
         # Write xml for conncomp files
         out = isceobj.createImage() # Copy the interferogram image from before
         out.accessMode = 'READ'
@@ -75,21 +97,21 @@ for ii in tqdm(range(len(params['pairs2']))):
         conf.append('# Input                                                           \n')
         conf.append('INFILE ' + infile                                              + '\n')
         conf.append('# Input file line length                                          \n')
-        conf.append('LINELENGTH '  +  str(params['nxl'])                            + '\n')
+        conf.append('LINELENGTH '  +  str(nxl2)                            + '\n')
         conf.append('                                                                  \n')
         conf.append('# Output file name                                                \n')
         conf.append('OUTFILE ' + outfile                                            + '\n')
         conf.append('                                                                  \n')
         conf.append('# Correlation file name                                           \n')
-        conf.append('CORRFILE  '    +  corfile                                  + '\n')
+        conf.append('CORRFILE  '    +  corfile                                      + '\n')
         conf.append('                                                                  \n')
         conf.append('# Statistical-cost mode (TOPO, DEFO, SMOOTH, or NOSTATCOSTS)      \n')
-        conf.append('STATCOSTMODE    SMOOTH                                            \n')
+        conf.append('STATCOSTMODE    DEFO                                            \n')
         conf.append('                                                                  \n')
         conf.append('INFILEFORMAT            COMPLEX_DATA                              \n')
         conf.append('#UNWRAPPEDINFILEFORMAT   COMPLEX_DATA                             \n')
         conf.append('OUTFILEFORMAT           FLOAT_DATA                                \n')
-        conf.append('CORRFILEFORMAT          FLOAT_DATA                               \n')
+        conf.append('CORRFILEFORMAT          FLOAT_DATA                                \n')
         conf.append('                                                                  \n')
         conf.append('NTILEROW ' + ntilerow                                          + '\n')
         conf.append('NTILECOL ' + ntilecol                                          + '\n')
@@ -101,7 +123,7 @@ for ii in tqdm(range(len(params['pairs2']))):
         conf.append('RMTMPTILE TRUE                                                    \n')
         with open(config_file_name,'w') as f:
             [f.writelines(c) for c in conf]
-        command = 'snaphu --mcf -g ' + conncompOut + ' -S -f ' + config_file_name 
+        command = 'snaphu --mcf -g ' + conncompOut + ' -f ' + config_file_name 
         os.system(command)
     else:
         print(outfile + ' already exists.')
