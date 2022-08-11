@@ -13,24 +13,39 @@ import glob
 from time import sleep
 from tqdm import tqdm
 
-params = np.load('params.npy',allow_pickle=True).item()
-locals().update(params)
+ps = np.load('./ps.npy',allow_pickle=True).all()
 
 geocode = False
 nproc='20'
-ntilerow='2'
-ntilecol='2'
-rowovrlp='50'
-colovrlp='50'
+ntilerow='1'
+ntilecol='1'
+rowovrlp='600'
+colovrlp='600'
+
+
+fSizes = []
+for ii,p in enumerate(ps.pairs2): 
+    if os.path.isfile(ps.intdir + '/' + p + '/' + 'fine_lk.int'):       
+        if os.path.getsize(ps.intdir + '/' + p + '/' + 'fine_lk.int')==0:
+            print('WARNING: ' + ps.intdir + '/' + p + ' File size too small. May be corrupt.' )
+            # os.system('rm -r ' + ps.intdir + '/' + p )
+            
+        else:
+            fSizes.append(os.path.getsize(ps.intdir + '/' + p + '/' + 'fine_lk.int'))
+            # os.system('rm -r ' + ps.intdir + '/' + p )
+    else:
+        print(p + '/' + 'fine_lk.int does not exist')
+medSize = np.nanmedian(fSizes)
+sleep(5)
 
 
 
-for ii in tqdm(range(len(params['pairs2']))):
-    pair = params['pairs2'][ii]
-    infile = params['intdir']+ '/' + pair+'/fine_lk_filt.int'
-    corfile = params['intdir']+ '/' + pair+'/cor_lk.r4'
-    outfile = params['intdir']+ '/' + pair+'/filt.unw'
-    conncompOut = params['intdir']+ '/' + pair+'/filt.unw.conncomp'
+for ii in tqdm(range(len(ps.pairs2))):
+    pair = ps.pairs2[ii]
+    infile = ps.intdir+ '/' + pair+'/fine_lk_filt.int'
+    corfile = ps.intdir+ '/' + pair+'/cor.r4'
+    outfile = ps.intdir+ '/' + pair+'/filt.unw'
+    conncompOut = ps.intdir+ '/' + pair+'/filt.unw.conncomp'
 
     if not os.path.isfile(outfile):
         print('unwrapping ' + pair)
@@ -44,14 +59,20 @@ for ii in tqdm(range(len(params['pairs2']))):
         out1.scheme =  'BIP' #'BIP'/ 'BIL' / 'BSQ' 
         out1.dataType = 'FLOAT'
         out1.filename = outfile
-        out1.width = params['nxl']
-        out1.length = params['nyl']
+        out1.width = ps.nxl
+        out1.length = ps.nyl
         out1.dump(outfile + '.xml') # Write out xml
         out1.renderHdr()
         out1.renderVRT()
         out1.finalizeImage()
 
-        
+       
+        intImage = isceobj.createIntImage()
+        intImage.load(infile + '.xml')
+        nxl2= intImage.width
+        # intImage.close()
+
+
         # Write xml for conncomp files
         out = isceobj.createImage() # Copy the interferogram image from before
         out.accessMode = 'READ'
@@ -61,35 +82,35 @@ for ii in tqdm(range(len(params['pairs2']))):
         out.filename = conncompOut
         out.bands = 1
         out.scheme =  'BIL' #'BIP'/ 'BIL' / 'BSQ' 
-        out.width = params['nxl']
-        out.length = params['nyl']
+        out.width = ps.nxl
+        out.length = ps.nyl
         out.dump(conncompOut + '.xml') # Write out xml
         out.renderHdr()
         out.renderVRT()
         out.finalizeImage()
         
      # Write out a config file
-        config_file_name = params['intdir'] + '/' +  pair + '/snaphu.conf'
-        f = params['intdir'] + '/' +  pair + '/snaphu_config'
+        config_file_name = ps.intdir + '/' +  pair + '/snaphu.conf'
+        f = ps.intdir + '/' +  pair + '/snaphu_config'
         conf=list()
         conf.append('# Input                                                           \n')
         conf.append('INFILE ' + infile                                              + '\n')
         conf.append('# Input file line length                                          \n')
-        conf.append('LINELENGTH '  +  str(params['nxl'])                            + '\n')
+        conf.append('LINELENGTH '  +  str(nxl2)                                     + '\n')
         conf.append('                                                                  \n')
         conf.append('# Output file name                                                \n')
         conf.append('OUTFILE ' + outfile                                            + '\n')
         conf.append('                                                                  \n')
         conf.append('# Correlation file name                                           \n')
-        conf.append('CORRFILE  '    +  corfile                                  + '\n')
+        conf.append('CORRFILE  '    +  corfile                                      + '\n')
         conf.append('                                                                  \n')
         conf.append('# Statistical-cost mode (TOPO, DEFO, SMOOTH, or NOSTATCOSTS)      \n')
         conf.append('STATCOSTMODE    SMOOTH                                            \n')
         conf.append('                                                                  \n')
         conf.append('INFILEFORMAT            COMPLEX_DATA                              \n')
-        conf.append('#UNWRAPPEDINFILEFORMAT   COMPLEX_DATA                             \n')
+        conf.append('#UNWRAPPEDINFILEFORMAT  COMPLEX_DATA                              \n')
         conf.append('OUTFILEFORMAT           FLOAT_DATA                                \n')
-        conf.append('CORRFILEFORMAT          FLOAT_DATA                               \n')
+        conf.append('CORRFILEFORMAT          FLOAT_DATA                                \n')
         conf.append('                                                                  \n')
         conf.append('NTILEROW ' + ntilerow                                          + '\n')
         conf.append('NTILECOL ' + ntilecol                                          + '\n')
@@ -101,24 +122,30 @@ for ii in tqdm(range(len(params['pairs2']))):
         conf.append('RMTMPTILE TRUE                                                    \n')
         with open(config_file_name,'w') as f:
             [f.writelines(c) for c in conf]
-        command = 'snaphu --mcf -g ' + conncompOut + ' -S -f ' + config_file_name 
+        if ntilerow=='1' and ntilecol=='1': # Only use the -S flag if we are using tiles
+            command = 'snaphu --mcf -g ' + conncompOut + ' -f ' + config_file_name 
+        else:
+            command = 'snaphu --mcf -g ' + conncompOut + ' -S -f ' + config_file_name 
         os.system(command)
     else:
         print(outfile + ' already exists.')
 
 
 if geocode==True:
+    '''
+    this only works for noncropped imagery
+    '''
     setupParams = np.load('setupParams.npy',allow_pickle=True).item()
     DEM = setupParams['DEM']
     bounds = setupParams['bounds']
-    mstr = workdir + '/master'
+    mstr = ps.workdir + '/master'
     
-    for pair in pairs:
-        file = intdir + '/' + pair + '/filt.unw'
-        if pair==pairs[0]:
+    for pair in ps.pairs:
+        file = ps.intdir + '/' + pair + '/filt.unw'
+        if pair==ps.pairs[0]:
             pwn=mstr
         else:
-            pwn = workdir
+            pwn = ps.workdir
         
-        command = 'geocodeIsce.py -a ' + str(alks) + ' -r ' +str(rlks) + ' -d ' + DEM + ' -m ' + mstr + ' -f ' +file + ' -b '  + bounds + ' -s ' + mstr
+        command = 'geocodeIsce.py -a ' + str(ps.alks) + ' -r ' +str(ps.rlks) + ' -d ' + DEM + ' -m ' + mstr + ' -f ' +file + ' -b '  + bounds + ' -s ' + mstr
         os.system(command)
