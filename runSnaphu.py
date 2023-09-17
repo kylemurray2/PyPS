@@ -7,25 +7,28 @@ run snaphu
 """
 
 import numpy as np
-import isceobj
+import isce.components.isceobj as isceobj
 import os
 import glob
 from time import sleep
-from tqdm import tqdm
 
 ps = np.load('./ps.npy',allow_pickle=True).all()
 
 geocode = False
-nproc='20'
-ntilerow='1'
-ntilecol='1'
-rowovrlp='600'
-colovrlp='600'
+nproc='16'
+ntilerow='2'
+ntilecol='2'
+rowovrlp='250'
+colovrlp='250'
+maxComps = 20
+initMethod = 'MCF'
+defoMax = 0
 
+ps.intdir = ps.workdir + '/Fringe2/PS_DS/sequential1'
 
 fSizes = []
-for ii,p in enumerate(ps.pairs2): 
-    if os.path.isfile(ps.intdir + '/' + p + '/' + 'fine_lk.int'):       
+for ii,p in enumerate(ps.pairs): 
+    if os.path.isfile(ps.intdir + '/' + p + '/' + 'filt_lk.int'):       
         if os.path.getsize(ps.intdir + '/' + p + '/' + 'fine_lk.int')==0:
             print('WARNING: ' + ps.intdir + '/' + p + ' File size too small. May be corrupt.' )
             # os.system('rm -r ' + ps.intdir + '/' + p )
@@ -34,19 +37,19 @@ for ii,p in enumerate(ps.pairs2):
             fSizes.append(os.path.getsize(ps.intdir + '/' + p + '/' + 'fine_lk.int'))
             # os.system('rm -r ' + ps.intdir + '/' + p )
     else:
-        print(p + '/' + 'fine_lk.int does not exist')
+        print(p + '/' + 'filt_lk.int does not exist')
 medSize = np.nanmedian(fSizes)
 sleep(5)
 
 
 
-for ii in tqdm(range(len(ps.pairs2))):
-    pair = ps.pairs2[ii]
-    infile = ps.intdir+ '/' + pair+'/fine_lk_filt.int'
-    corfile = ps.intdir+ '/' + pair+'/cor.r4'
-    outfile = ps.intdir+ '/' + pair+'/filt.unw'
-    conncompOut = ps.intdir+ '/' + pair+'/filt.unw.conncomp'
-
+for ii in range(len(ps.pairs)):
+    pair = ps.pairs[ii]
+    infile = ps.intdir+ '/' + pair+'/filt_lk2.int'
+    corfile = ps.intdir+ '/' + pair+'/filt_lk2.cor'
+    outfile = ps.intdir+ '/' + pair+'/filt_lk2.unw'
+    conncompOut = ps.intdir+ '/' + pair+'/filt_lk2.unw.conncomp'
+    waterMask = ps.mergeddir + '/geom_reference/waterMask_lk.rdr'
     if not os.path.isfile(outfile):
         print('unwrapping ' + pair)
         os.system('rm snaphu_tiles*')
@@ -66,12 +69,10 @@ for ii in tqdm(range(len(ps.pairs2))):
         out1.renderVRT()
         out1.finalizeImage()
 
-       
         intImage = isceobj.createIntImage()
         intImage.load(infile + '.xml')
         nxl2= intImage.width
         # intImage.close()
-
 
         # Write xml for conncomp files
         out = isceobj.createImage() # Copy the interferogram image from before
@@ -97,12 +98,17 @@ for ii in tqdm(range(len(ps.pairs2))):
         conf.append('INFILE ' + infile                                              + '\n')
         conf.append('# Input file line length                                          \n')
         conf.append('LINELENGTH '  +  str(nxl2)                                     + '\n')
+        conf.append('MAXNCOMPS '  +  str(maxComps)                                     + '\n')
+        conf.append('INITMETHOD '  +  str(initMethod)                               + '\n')
+        conf.append('DEFOMAX_CYCLE '  +  str(defoMax)                               + '\n')
         conf.append('                                                                  \n')
         conf.append('# Output file name                                                \n')
         conf.append('OUTFILE ' + outfile                                            + '\n')
         conf.append('                                                                  \n')
         conf.append('# Correlation file name                                           \n')
         conf.append('CORRFILE  '    +  corfile                                      + '\n')
+        conf.append('BYTEMASKFILE  '    +  waterMask                                + '\n')
+
         conf.append('                                                                  \n')
         conf.append('# Statistical-cost mode (TOPO, DEFO, SMOOTH, or NOSTATCOSTS)      \n')
         conf.append('STATCOSTMODE    SMOOTH                                            \n')

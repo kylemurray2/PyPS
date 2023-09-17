@@ -17,14 +17,14 @@ Created on Fri Nov 20 14:39:57 2020
 import numpy as np
 import isceobj
 from matplotlib import pyplot as plt
-import makeMap
 from scipy.interpolate import griddata
 import glob
 import os
 from datetime import date
-import util
+from PyPS2 import util,makeMap
 from scipy import signal
-from PyPS2 import util
+
+
 
 def weeding(mincor=0.7,gamThresh=0.7,varMax =.05, connCompCompleteness = 0.9,plotStuff=False,makeChanges=False,pairs2Overlap=1,overwriteGeo=False):
     '''
@@ -61,8 +61,10 @@ def weeding(mincor=0.7,gamThresh=0.7,varMax =.05, connCompCompleteness = 0.9,plo
                 pairs3.append(ps.dates[ii] + '_' + ps.dates[ii+jj])
     
     
+    
+    
     stack = []
-    for p in pairs3:
+    for p in pairs3:        
         unw_file = ps.intdir + '/' + p + '/filt.unw'
         unwImage = isceobj.createIntImage()
         unwImage.load(unw_file + '.xml')
@@ -79,7 +81,7 @@ def weeding(mincor=0.7,gamThresh=0.7,varMax =.05, connCompCompleteness = 0.9,plo
     
     corStack = []
     for p in pairs3:
-        cor_file = ps.intdir + '/' + p + '/cor.r4'
+        cor_file = ps.intdir + '/' + p + '/fine_lk.cor'
         corImage = isceobj.createIntImage()
         corImage.load(cor_file + '.xml')
         cor = corImage.memMap()[:,:,0]
@@ -233,7 +235,7 @@ def weeding(mincor=0.7,gamThresh=0.7,varMax =.05, connCompCompleteness = 0.9,plo
         ax[2].plot(dateVar);ax[2].set_xlabel('time index');ax[2].set_ylabel('Date variance (average of associated ifgs')
     
         fig,ax = plt.subplots(2,2,figsize=(12,10))
-        ax[0,0].imshow(gam,vmin=.45,vmax=.55,cmap='magma');ax[0,0].set_title('Gamma0')
+        ax[0,0].imshow(gam,cmap='magma');ax[0,0].set_title('Gamma0')
         ax[0,1].imshow(connSum,cmap='jet_r'); ax[0,1].set_title('Number of images with connected components')
         ax[1,0].imshow(corAvgMap,cmap='magma');ax[1,0].set_title('Average Correlation')
         ax[1,1].imshow(corVar,cmap='magma');ax[1,1].set_title('Correlation Variance')
@@ -244,9 +246,10 @@ def weeding(mincor=0.7,gamThresh=0.7,varMax =.05, connCompCompleteness = 0.9,plo
         ax[1,0].imshow(corMsk,cmap='magma');ax[1,0].set_title('Average Correlation Mask')
         ax[1,1].imshow(varMsk,cmap='magma');ax[1,1].set_title('Correlation Variance Mask')
         
+        maxcor = np.ravel(corAvgMap).max()
         plt.figure()
         plt.plot(np.ravel(corAvgMap)[::10],np.ravel(corVar)[::10],'.',markersize = 1)
-        plt.plot([mincor,mincor,mincor,1,1,1,1,mincor],[0,varMax,varMax,varMax,varMax,0,0,0])
+        plt.plot([mincor,mincor,mincor,maxcor,maxcor,maxcor,maxcor,mincor],[0,varMax,varMax,varMax,varMax,0,0,0])
         plt.xlabel('Average Correlation');plt.ylabel('Correlation variance');plt.show()
 
         plt.figure()
@@ -334,7 +337,8 @@ if __name__ == '__main__':
     makeChanges = False
     mincor = .5
     gamThresh = .5
-    varMax =  .05
+    varMax =  .06
     pairs2Overlap=1
-    overwriteGeo=False
-    weeding(mincor,gamThresh,plotStuff,makeChanges,pairs2Overlap,overwriteGeo)
+    overwriteGeo=True
+    connCompCompleteness = .9
+    weeding(mincor,gamThresh,varMax,connCompCompleteness,plotStuff,makeChanges,pairs2Overlap,overwriteGeo)

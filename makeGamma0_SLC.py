@@ -14,7 +14,7 @@ Saves downlooked ifgs in the respective ifg directories.
 """
 
 import numpy as np
-import isceobj
+import isce.components.isceobj as isceobj
 from matplotlib import pyplot as plt
 import cv2
 import os
@@ -28,7 +28,7 @@ doPS = True # Setting this to False will make gamma0 all ones.
 if doPS:
     
     overwrite =False
-    plot = False
+    plot = True
     
     ps = np.load('./ps.npy',allow_pickle=True).all()
     
@@ -80,6 +80,10 @@ if doPS:
     
     print('\nFile sizes should be ' + str(medSize))
     
+    
+    if ps.crop:
+        print('Using cropped files')
+
     #ii=0
     #d = dates[ii]
     
@@ -90,7 +94,7 @@ if doPS:
     
             #save diff ifg
             intImage = isceobj.createIntImage()
-            intImage.filename = ps.slcdir + '/' + d + '/fine_diff.int'
+            intImage.filename = ps.slcdir + '/' + d + '/fine_full.int'
             intImage.width = ps.nx
             intImage.length = ps.ny
             intImage.dump(intImage.filename + '.xml') # Write out xml
@@ -99,6 +103,7 @@ if doPS:
             print('working on ' + d)
             
             if ps.crop:
+                
                 f = ps.slcdir +'/'+ d + '/' + d + '.slc.full.crop'
             else:
                 f = ps.slcdir +'/'+ d + '/' + d + '.slc.full'
@@ -114,6 +119,7 @@ if doPS:
             slcImage.load(f + '.xml')
             slc2 = slcImage.memMap()[:,:,0]
             ifg = np.multiply(slc1,np.conj(slc2))
+
             ifg_real = np.real(ifg)
             ifg_imag = np.imag(ifg)
             
@@ -126,20 +132,16 @@ if doPS:
             cpx0   /= abs(cpx0)
             cpxf   /= abs(cpxf)
             
-            fid.write(np.multiply(cpx0, np.conj(cpxf)))
+            fid.write(ifg)
             fid.close()
         else:
             print(d + ' already exists.')
-        #mad = lambda x: np.sqrt(np.nanmedian(abs(x - np.nanmedian(x,axis=0))**2),axis=0d)
     
     nblocks = 40 # increase the nblocks because this part is more memory intensive
     
     gamma0 =np.zeros((ps.ny,ps.nx)).astype(np.float32)
     gamma1 =np.zeros((ps.ny,ps.nx)).astype(np.float32)
-
-    # Make a stack of the diff images (memory mapped )
-    # We have to do this in 20 subsections to save on memory
-    
+   
     
     diffImage = intImage.clone()   
     blocks = np.linspace(0,ps.ny,nblocks).astype(int)

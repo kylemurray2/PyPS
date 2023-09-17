@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Aug  9 10:16:54 2018
-DOWNLOOKING
-Saves downlooked ifgs in the respective ifg directories.
 
-FILTERING
-work in progress
+Distributed scatterer type approach
+
+Downlooking, filtering, and coherence
+Saves downlooked ifgs in the respective ifg directories.
 
 Note:
     when it makes ifgs, it's subtracting the secondary from the reference.  So 
@@ -16,8 +16,12 @@ Note:
 @author: kdm95
 """
 
+import isce.components.iscesys.Component.ProductManager as pm
+
+
+
 import numpy as np
-import isceobj
+import isce.components.isceobj as isceobj
 from matplotlib import pyplot as plt
 import cv2   
 import os
@@ -25,10 +29,12 @@ import timeit
 import glob as glob
 import util
 from util import show
+import FilterAndCoherence
+
 
 filterFlag      = True
 unwrap          = False # Usually better to leave False and use runSnaphu.py for more options and outputs
-filterStrength  = '.8'
+filterStrength  = '.3'
 fixImage        = False  #Do this in case you renamed any of the directories or moved the SLCs since they were made
 nblocks         = 1
 seaLevel        = -10
@@ -55,10 +61,12 @@ if fixImage:
         os.system('fixImageXml.py -i ' + fname + ' -f')
 
 # Load the gamma0 file
-f = ps.tsdir + '/gamma0.int'
-intImage = isceobj.createIntImage()
-intImage.load(f + '.xml')
-gamma0= intImage.memMap()
+# f = ps.tsdir + '/gamma0.int'
+# intImage = isceobj.createIntImage()
+# intImage.load(f + '.xml')
+# gamma0= intImage.memMap()
+gamma0= np.ones((ps.ny,ps.nx))
+
 gamma0=gamma0.copy() # mmap is readonly, so we need to copy it.
 gamma0[np.isnan(gamma0)] = 0
 
@@ -103,7 +111,7 @@ y=yy.flatten()
 x=xx.flatten() 
 
 pair = ps.pairs2[0]
-
+pair = '20211129_20211205'
 for pair in ps.pairs2: #loop through each ifg and save to 
     if not os.path.isdir(ps.intdir + '/' + pair):
         os.system('mkdir ' + ps.intdir+ '/' + pair)
@@ -120,14 +128,14 @@ for pair in ps.pairs2: #loop through each ifg and save to
         out.dump(out.filename + '.xml') # Write out xml
         fid=open(out.filename,"ab+")
         
-        # open a cor file too
-        outc = isceobj.createImage() # Copy the interferogram image from before
-        outc.dataType = 'FLOAT'
-        outc.filename = ps.intdir + '/' + pair + '/cor_lk.r4'
-        outc.width = ps.nxl
-        outc.length = ps.nyl
-        outc.dump(outc.filename + '.xml') # Write out xml
-        fidc=open(outc.filename,"ab+")
+        # # open a cor file too
+        # outc = isceobj.createImage() # Copy the interferogram image from before
+        # outc.dataType = 'FLOAT'
+        # outc.filename = ps.intdir + '/' + pair + '/cor_lk.r4'
+        # outc.width = ps.nxl
+        # outc.length = ps.nyl
+        # outc.dump(outc.filename + '.xml') # Write out xml
+        # fidc=open(outc.filename,"ab+")
         
         
         # break it into blocks
@@ -140,26 +148,29 @@ for pair in ps.pairs2: #loop through each ifg and save to
             d = pair[0:8]
 
             if ps.crop:
-                f = ps.slcdir +'/'+ d + '/' + d + '.slc.full.crop'    
+                f1 = ps.slcdir +'/'+ d + '/' + d + '.slc.full.crop'    
             else:
-                f = ps.slcdir +'/'+ d + '/' + d + '.slc.full'              
+                f1 = ps.slcdir +'/'+ d + '/' + d + '.slc.full'              
             slcImage = isceobj.createSlcImage()
-            slcImage.load(f + '.xml')
+            slcImage.load(f1 + '.xml')
             slc1 = slcImage.memMap()[:,:,0][start:stop,:]
             
             if ps.crop:
-                f = ps.slcdir +'/'+ d2 + '/' + d2 + '.slc.full.crop'    
+                f2 = ps.slcdir +'/'+ d2 + '/' + d2 + '.slc.full.crop'    
             else:
-                f = ps.slcdir +'/'+ d2 + '/' + d2 + '.slc.full'    
+                f2 = ps.slcdir +'/'+ d2 + '/' + d2 + '.slc.full'    
             slcImage = isceobj.createSlcImage()
-            slcImage.load(f + '.xml')
+            slcImage.load(f2 + '.xml')
             slc2 = slcImage.memMap()[:,:,0][start:stop,:]
             ifg = np.multiply(slc1,np.conj(slc2))
             
+            cohFile = ps.intdir + '/' + pair + '/coh.coh'
+            FilterAndCoherence.estCpxCoherence(f1, f2,cohFile, alks=1, rlks=1)
+            
             # del(slc1,slc2)
             
-            ifg_real = np.real(ifg) * gamma0[start:stop,0]
-            ifg_imag = np.imag(ifg) * gamma0[start:stop,0]
+            ifg_real = np.real(ifg) * gamma0[start:stop,:]
+            ifg_imag = np.imag(ifg) * gamma0[start:stop,:]
             
             # del(ifg)
 
@@ -174,30 +185,47 @@ for pair in ps.pairs2: #loop through each ifg and save to
             cpx[np.isnan(cpx)] = 0
             fid.write(cpx)
             
-            slc1_F = cv2.filter2D(abs(slc1)**2,-1, win)
-            slc2_F = cv2.filter2D(abs(slc2)**2,-1, win)
-            denom = np.sqrt(slc1_F[y,x]) * np.sqrt(slc2_F[y,x])
-            cor=(abs(cpx.ravel())/denom).reshape(ps.nyl,ps.nxl) 
-            fidc.write(cor)
+            # slc1_F = cv2.filter2D(abs(slc1**2),-1, win) # using win instead of win1 because cpx is an average, not a sum
+            # slc2_F = cv2.filter2D(abs(slc2**2),-1, win)
+            # denom = np.sqrt(slc1_F[y,x]) * np.sqrt(slc2_F[y,x])
+            # cor=(abs(cpx.ravel())/denom).reshape(ps.nyl,ps.nxl)
+            # fidc.write(cor)
         
         out.renderHdr()
         out.renderVRT()  
-        outc.renderHdr()
-        outc.renderVRT() 
+        # outc.renderHdr()
+        # outc.renderVRT() 
         fid.close()
-        fidc.close()
-    # for pair in params['pairs2']: #loop through each ifg and save to 
+        # fidc.close()
+    # for pair in ps.pairs2: #loop through each ifg and save to 
         if filterFlag:
             name = ps.intdir + '/' + pair + '/fine_lk.int'
             corname = ps.intdir + '/' + pair + '/cor.r4'
             offilt =  ps.intdir + '/' + pair + '/fine_lk_filt.int'
-            command = 'python /home/km/Software/test/isce2/contrib/stack/topsStack/FilterAndCoherence.py -c ' + corname + ' -i ' + name + ' -f ' +  offilt + ' -s ' + filterStrength + ' > log'
-            os.system(command)
+            # FilterAndCoherence.runFilter(name,offilt,float(filterStrength))
+            FilterAndCoherence.estCoherence(name, corname)
             if unwrap:
                 unwName = ps.intdir+ '/' + pair + '/filt.unw'
                 util.unwrap_snaphu(name,corname,unwName,ps.nyl,ps.nxl)
 
 
 
+# a = 1+0j  # angle: 0
+# b = 0+1j  # angle: +90
+# c=np.multiply(a,np.conj(b)) # a - b = c 
+# d =np.angle(c) # a - b =  -90
+# If LOS shortened between a and b, then the difference should be positive (uplift)
+# If LOS lengthened, then the difference should be negative (subsidence)
+# For ifgs, MintPY uses the opposite: ("positive value represents motion away from the satellite."),
+#  but for the MintPy time series they use positive is uplift.  
+# from osgeo import gdal
+# p1='20211129_20211205'
+# p2 = '20211205_20211211' # This has the flood
+# ds1 = gdal.Open(ps.intdir+'/'+p1+'/coh.coh.vrt')
+# preflood = ds1.GetVirtualMemArray()
+# ds2 = gdal.Open(ps.intdir+'/'+p2+'/coh.coh.vrt')
+# flood = ds2.GetVirtualMemArray()
 
-
+# diff = preflood[1,:,:]-flood[1,:,:]
+# plt.figure()
+# plt.imshow(diff[2000:4000,10000:20000],vmin=.1,vmax=.4)

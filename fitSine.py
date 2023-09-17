@@ -28,6 +28,7 @@ def fitSine(tList,yList,period):
    slope = w[3,:]
    return (phase,amplitude,bias,slope)
 
+
 def fitSine1d(tList,yList,period):
    '''
        period in days
@@ -45,7 +46,7 @@ def fitSine1d(tList,yList,period):
    amplitude = norm([w[0,0],w[1,0]],2)
    bias = w[2,0]
    slope = w[3,0]
-   return (phase,amplitude,bias,slope)
+   return (phase,amplitude,bias,slope,A,w)
  
     
 if __name__=='__main__':

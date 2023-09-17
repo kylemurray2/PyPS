@@ -11,7 +11,7 @@ import numpy as np
 import glob
 import os
 from datetime import date
-import isceobj
+import isce.components.isceobj as isceobj
 import matplotlib.pyplot as plt
 import makeMap
 import cartopy.crs as ccrs
@@ -22,10 +22,12 @@ from scipy import signal
 import localParams
 import util
 
-def main(plot=True,doDownlook=True,replace=False):
-    # plot=True
-    # doDownlook=True
-    # replace=True
+
+from osgeo import gdal
+
+
+def main(plot=False,doDownlook=True,replace=False):
+    # plot=True;doDownlook=True;replace=True
     
     ps = localParams.getLocalParams()
     plt.close('all')
@@ -33,11 +35,14 @@ def main(plot=True,doDownlook=True,replace=False):
     if replace:
         os.system('rm ./merged/geom_reference/*crop*')
         os.system('rm ./merged/geom_reference/*lk*')
-        
+        os.system('rm ./merged/SLC/*/*crop*')
+       
         
     # Make directories
     if not os.path.isdir(ps.tsdir):
         os.mkdir(ps.tsdir) 
+    if not os.path.isdir('Npy'):
+        os.mkdir('Npy') 
     if not os.path.isdir(ps.workdir + '/Figs'):
         os.mkdir(ps.workdir + '/Figs')
     
@@ -45,11 +50,11 @@ def main(plot=True,doDownlook=True,replace=False):
     geomList = glob.glob(ps.mergeddir + '/geom_reference/*full')
     slcList = glob.glob(ps.slcdir + '/*/*full')
     blList = glob.glob(ps.mergeddir + '/baselines/????????/????????')
-    if doDownlook:
-        for fname in slcList:
-            os.system('fixImageXml.py -i ' + fname + ' -f')
-        for fname in geomList:
-            os.system('fixImageXml.py -i ' + fname + ' -f')
+    # if doDownlook:
+        # for fname in slcList:
+        #     os.system('fixImageXml.py -i ' + fname + ' -f')
+        # for fname in geomList:
+        #     os.system('fixImageXml.py -i ' + fname + ' -f')
         # for fname in blList:
         #     os.system('fixImageXml.py -i ' + fname + ' -f')
             
@@ -123,6 +128,7 @@ def main(plot=True,doDownlook=True,replace=False):
     if ps.crop:
         ny = ps.cropymax-ps.cropymin
         nx = ps.cropxmax-ps.cropxmin
+
     else:
         ny = gImage.length
         nx = gImage.width
@@ -133,23 +139,25 @@ def main(plot=True,doDownlook=True,replace=False):
     
     
     if ps.crop:
-        for d in ps.dates:
+        for d in dates:
             infile = ps.slcdir + '/' + d + '/' + d + '.slc.full'
-            imgi = isceobj.createSlcImage()
-            imgi.load(infile+'.xml')
-            
-            # Rearrange axes order from small to big 
-            slcIm = util.orderAxes(imgi.memMap(),ps.nx,ps.ny)
-            slcIm = slcIm[:,ps.cropymin:ps.cropymax,ps.cropxmin:ps.cropxmax]
-    
-            imgo = imgi.clone()
-            imgo.filename = infile+'.crop'
-            imgo.width = ps.cropxmax-ps.cropxmin
-            imgo.length = ps.cropymax-ps.cropymin
-            imgo.dump(imgo.filename+'.xml')
-            slcIm.tofile(imgo.filename)
-            imgo.finalizeImage()
-            del(slcIm)
+            if not os.path.isfile(infile+'.crop'):
+                imgi = isceobj.createSlcImage()
+                imgi.load(infile+'.xml')
+                if f in ['los','incLocal']:
+                    imgi.scheme = 'BSQ'
+                # Rearrange axes order from small to big 
+                slcIm = util.orderAxes(imgi.memMap(),nx,ny)
+                slcIm = slcIm[:,ps.cropymin:ps.cropymax,ps.cropxmin:ps.cropxmax]
+        
+                imgo = imgi.clone()
+                imgo.filename = infile+'.crop'
+                imgo.width = ps.cropxmax-ps.cropxmin
+                imgo.length = ps.cropymax-ps.cropymin
+                imgo.dump(imgo.filename+'.xml')
+                slcIm.tofile(imgo.filename)
+                imgo.finalizeImage()
+                del(slcIm)
     
     
     
@@ -157,22 +165,24 @@ def main(plot=True,doDownlook=True,replace=False):
     if ps.crop:
         for f in file_list:
             infile = ps.mergeddir + '/geom_reference/' + f + '.rdr.full'
-            imgi = isceobj.createImage()
-            imgi.load(infile+'.xml')
-            # print(imgi.memMap().shape)
-            
-            # Rearrange axes order from small to big 
-            geomIm = util.orderAxes(imgi.memMap(),nx,ny)
-            geomIm = geomIm[:,ps.cropymin:ps.cropymax,ps.cropxmin:ps.cropxmax]
-    
-            imgo = imgi.clone()
-            imgo.filename = infile+'.crop'
-            imgo.width = ps.cropxmax-ps.cropxmin
-            imgo.length = ps.cropymax-ps.cropymin
-            imgo.dump(imgo.filename+'.xml')
-            geomIm.tofile(imgo.filename)
-            imgo.finalizeImage()
-            del(geomIm)
+            if not os.path.isfile(infile+'.crop'):
+                imgi = isceobj.createImage()
+                imgi.load(infile+'.xml')
+                if f in ['los','incLocal']:
+                    imgi.scheme = 'BSQ'
+                # print(imgi.memMap().shape)
+                # Rearrange axes order from small to big 
+                geomIm = util.orderAxes(imgi.memMap(),nx,ny)
+                geomIm = geomIm[:,ps.cropymin:ps.cropymax,ps.cropxmin:ps.cropxmax]
+                # geomIm = geomIm[:,ymin:ymax,xmin:xmax]
+                imgo = imgi.clone()
+                imgo.filename = infile+'.crop'
+                imgo.width = nx #ps.cropxmax-ps.cropxmin
+                imgo.length =ny #ps.cropymax-ps.cropymin
+                imgo.dump(imgo.filename+'.xml')
+                geomIm.tofile(imgo.filename)
+                imgo.finalizeImage()
+                del(geomIm)
             
     if doDownlook:
         def downLook(infile, outfile,alks,rlks):
@@ -194,6 +204,7 @@ def main(plot=True,doDownlook=True,replace=False):
             outfile = ps.mergeddir + '/geom_reference/' + f + '_lk.rdr'
             
             if not os.path.isfile(outfile):
+                print('downlooking ' + f)
                 downLook(infile, outfile,ps.alks,ps.rlks)
             else:
                 print(outfile + ' already exists')
@@ -226,22 +237,24 @@ def main(plot=True,doDownlook=True,replace=False):
     lat_ifg = lat_ifg.copy().astype(np.float32)
     lat_ifg[lat_ifg==0]=np.nan
     Image.finalizeImage()
+
     
     # HGT --------------
     Image = isceobj.createImage()
     Image.load(f_hgt_lk + '.xml')
     hgt_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[0,:,:]
     hgt_ifg = hgt_ifg.copy().astype(np.float32)
-    hgt_ifg[hgt_ifg==0]=np.nan
+    hgt_ifg[hgt_ifg==-500]=np.nan
     Image.finalizeImage()
     
     # LOS --------------
     Image = isceobj.createImage()
     Image.load(f_los_lk + '.xml')
-    Image.bands=2
-    Image.scheme='BSQ'
+    # Image.bands=2
+    # Image.scheme='BIP'
     los_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[0,:,:]
     los_ifg = los_ifg.copy()
+    util.show(los_ifg)
     az_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[1,:,:]
     az_ifg = az_ifg.copy()
     Image.finalizeImage()
@@ -293,8 +306,8 @@ def main(plot=True,doDownlook=True,replace=False):
     
     Image = isceobj.createImage()
     Image.load(f_inc_lk + '.xml')
-    Image.bands=2
-    Image.scheme='BSQ'
+    # Image.bands=2
+    # Image.scheme='BSQ'
     # inc_ifg1 = Image.memMap()[0,:,:] # relative to the local plane of the ground
     inc_ifg = util.orderAxes(Image.memMap(),nxl,nyl)[1,:,:]# relative to surface normal vector (this is the one we want I think)
     inc_ifg = inc_ifg.copy()
@@ -328,13 +341,7 @@ def main(plot=True,doDownlook=True,replace=False):
     shm_ifg = signal.convolve2d(shm_ifg,Q, mode='same')
     inc_ifg = signal.convolve2d(inc_ifg,Q, mode='same')
     
-    #Do it again for good measure (could also just make the kernel bigger..)
-    lon_ifg = signal.convolve2d(lon_ifg,Q, mode='same')
-    lat_ifg = signal.convolve2d(lat_ifg,Q, mode='same')
-    hgt_ifg = signal.convolve2d(hgt_ifg,Q, mode='same')
-    los_ifg = signal.convolve2d(los_ifg,Q, mode='same')
-    shm_ifg = signal.convolve2d(shm_ifg,Q, mode='same')
-    inc_ifg = signal.convolve2d(inc_ifg,Q, mode='same')
+
     
     
     # outputfilename = ps.mergeddir + '/geom_reference/waterMask_lk.rdr.crop'
@@ -390,20 +397,44 @@ def main(plot=True,doDownlook=True,replace=False):
     maxlat=latI.max()
     minlon=lonI.min()
     maxlon=lonI.max()
+
+
+    # if plot:
+        # zoomLevel=8
+        # bg = 'World_Shaded_Relief'
+        # pad=2
+        # title = 'Footprint'
+        # makeMap.mapBackground(bg, minlon, maxlon, minlat, maxlat, pad, zoomLevel, title)
+        # plt.plot(lon_bounds,lat_bounds,linewidth=2,color='red',zorder=10,transform=ccrs.PlateCarree())
+        # plt.rc('font',size=14)
+        # plt.savefig(ps.workdir + '/Figs/areamap.svg',transparent=True,dpi=100 )
     
-    if plot:
-        zoomLevel=8
-        bg = 'World_Shaded_Relief'
-        pad=2
-        title = 'Footprint'
-        makeMap.mapBackground(bg, minlon, maxlon, minlat, maxlat, pad, zoomLevel, title)
-        plt.plot(lon_bounds,lat_bounds,linewidth=2,color='red',zorder=10,transform=ccrs.PlateCarree())
-        plt.rc('font',size=14)
-        plt.savefig(ps.workdir + '/Figs/areamap.svg',transparent=True,dpi=100 )
     
     
     
     
+    # f = './DEM/swbdLat_N19_N24_Lon_W162_W158.wbd'
+    # intImage = isceobj.createIntImage()
+    # intImage.load(f + '.xml')
+    # wm= intImage.memMap()
+    # wm=wm.copy() # mmap is readonly, so we need to copy it.
+
+    # wm[wm==0] = 1
+    # wm[wm==-1] = 0
+    # wm=np.asarray(wm,dtype=np.float32)
+    # util.writeISCEimg(wm,f,1,wm.shape[1],wm.shape[0],'Float')
+
+    # intImage.dump(intImage.filename + '.xml') # Write out xml
+    # wm.tofile(f) # Write file out
+    
+    # f_lon = ps.mergeddir + '/geom_reference/lon.rdr.full'
+    # f_lat = ps.mergeddir + '/geom_reference/lat.rdr.full'
+    # import createWaterMask
+    # createWaterMask.geo2radar('./DEM/swbdLat_N19_N24_Lon_W162_W158.wbd','wm',f_lon,f_lat)
+    
+    # util.getWaterMask(ps.dem, f_lon, f_lat, 'waterMask.byte')
+    
+
     ps.lon_ifg = lonI
     ps.lat_ifg = latI
     ps.hgt_ifg = hgt_ifg
@@ -442,4 +473,4 @@ def main(plot=True,doDownlook=True,replace=False):
     np.save('ps.npy',ps)
 
 if __name__ == '__main__':
-    main()
+    main(plot=True,doDownlook=True,replace=True)

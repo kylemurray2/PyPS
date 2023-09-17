@@ -1,0 +1,4 @@
+Error log
+
+ImportError:  libstdc++.so.6: version `GLIBCXX_3.4.30'
+

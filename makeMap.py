@@ -8,6 +8,8 @@ Map an IFG or other gridded data
 
 @author: km
 """
+
+
 from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 import cartopy.io.img_tiles as cimgt
 from cartopy import config
@@ -29,7 +31,7 @@ class ShadedReliefESRI(GoogleTiles):
         return url
 
 
-def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title, bg='World_Imagery', cm='jet', plotFaults= False):
+def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title, bg='World_Imagery', cm='jet', plotFaults= False,alpha=1,contour=False):
     
     minlat=lats.min()
     maxlat=lats.max()
@@ -38,7 +40,7 @@ def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title, bg='World_Imagery', cm=
     url = 'https://server.arcgisonline.com/ArcGIS/rest/services/' + bg + '/MapServer/tile/{z}/{y}/{x}.jpg'
     image = cimgt.GoogleTiles(url=url)
     data_crs = image.crs #ShadedReliefESRI().crs#ccrs.PlateCarree()
-    fig =  plt.figure(figsize=(6,6))
+    fig =  plt.figure(figsize=(8,8))
     ax = plt.axes(projection=data_crs)
     ax.set_extent([minlon-pad, maxlon+pad, minlat-pad, maxlat+pad], crs=ccrs.PlateCarree())
     cmap = plt.get_cmap(cm)
@@ -47,33 +49,40 @@ def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title, bg='World_Imagery', cm=
     lon_range = (pad+maxlon) - (minlon-pad)
     lat_range = (pad+maxlat) - (minlat-pad)
     rangeMin = np.min(np.array([lon_range,lat_range]))
-    tick_increment = round(rangeMin/4,1)
+    tick_increment = round(rangeMin/8,2)
     
     import matplotlib.ticker as mticker
     from cartopy.mpl.ticker import (LongitudeFormatter, LatitudeFormatter,
                                 LatitudeLocator)
     
-    gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
-                  linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-    gl.xlocator = mticker.FixedLocator(np.arange(np.floor(minlon-pad),np.ceil(maxlon+pad),tick_increment))
-    gl.ylocator = LatitudeLocator()
-    gl.xformatter = LongitudeFormatter()
-    gl.yformatter = LatitudeFormatter()
-    gl.ylabel_style = {'size': 8, 'color': 'black'}
-    gl.xlabel_style = {'size': 8, 'color': 'black'}
-    gl.top_labels = False
-    gl.right_labels = False
+    # gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
+    #               linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    # gl.xlocator = mticker.FixedLocator(np.arange(np.floor(minlon-pad),np.ceil(maxlon+pad),tick_increment))
+    # gl.ylocator = LatitudeLocator()
+    # gl.xformatter = LongitudeFormatter()
+    # gl.yformatter = LatitudeFormatter()
+    # gl.ylabel_style = {'size': 8, 'color': 'black'}
+    # gl.xlabel_style = {'size': 8, 'color': 'black'}
+    # gl.top_labels = False
+    # gl.right_labels = False
     
     ax.add_image(image, zoom) #zoom level
-    img_handle = plt.pcolormesh(lons, lats, img,cmap=cmap, vmin=vmin,vmax=vmax,transform=ccrs.PlateCarree(),rasterized = True)
+    
+    if contour:
+        img_handle = plt.contourf(lons, lats,img,levels=np.arange(vmin,vmax,1),cmap=cmap,transform=ccrs.PlateCarree(),rasterized = True)
+    else:
+        img_handle = plt.pcolormesh(lons, lats, img,cmap=cmap, alpha=alpha,vmin=vmin,vmax=vmax,transform=ccrs.PlateCarree(),rasterized = True,linewidth=0,ls=":", edgecolor='face')
 
-    plt.colorbar(img_handle,fraction=0.03, pad=0.05,orientation='horizontal')
+
+    plt.colorbar(img_handle,fraction=0.03, pad=0.05,orientation='horizontal',label='mm/yr')
     
     if plotFaults:
         # Plot faults
         import cartopy.io.shapereader as shpreader
         from cartopy.feature import ShapelyFeature
-        reader = shpreader.Reader("/d/MapData/gem-global-active-faults/shapefile/gem_active_faults.shp")
+        # reader = shpreader.Reader("/d/MapData/gem-global-active-faults/shapefile/gem_active_faults.shp")
+        reader = shpreader.Reader("/d/MapData/EARS/kivu.shp")
+
         shape_feature = ShapelyFeature(reader.geometries(), ccrs.PlateCarree(), edgecolor='r', facecolor='none',linewidth=1,zorder=5,alpha=0.8)
         ax.add_feature(shape_feature)
     
@@ -81,7 +90,7 @@ def mapImg(img, lons, lats, vmin, vmax, pad,zoom, title, bg='World_Imagery', cm=
     plt.show()
     
     
-def mapBackground(bg, minlon, maxlon, minlat, maxlat, zoomLevel, title, img=None,vmin=None,vmax=None, pad=0, scalebar=100, borders=True,plotFaults=True):
+def mapBackground(bg, minlon, maxlon, minlat, maxlat, zoomLevel, title, pad=0, scalebar=100, borders=True,plotFaults=True):
   
     '''
     Makes a background map that you can then plot stuff over (footprints, scatterplot, etc.)
@@ -119,7 +128,7 @@ def mapBackground(bg, minlon, maxlon, minlat, maxlat, zoomLevel, title, img=None
     url = 'https://server.arcgisonline.com/ArcGIS/rest/services/' + bg + '/MapServer/tile/{z}/{y}/{x}.jpg'
     image = cimgt.GoogleTiles(url=url)
     data_crs = image.crs #ShadedReliefESRI().crs#ccrs.PlateCarree()
-    fig =  plt.figure(figsize=(4,4))
+    fig =  plt.figure(figsize=(6,6))
     ax = plt.axes(projection=data_crs)
     ax.set_extent([minlon-pad, maxlon+pad, minlat-pad, maxlat+pad], crs=ccrs.PlateCarree())
 
@@ -157,7 +166,9 @@ def mapBackground(bg, minlon, maxlon, minlat, maxlat, zoomLevel, title, img=None
         import cartopy.io.shapereader as shpreader
         from cartopy.feature import ShapelyFeature
         if minlon >0:
-            reader = shpreader.Reader("/d/MapData/gem-global-active-faults/shapefile/gem_active_faults.shp")
+            # reader = shpreader.Reader("/d/MapData/gem-global-active-faults/shapefile/gem_active_faults.shp")
+            reader = shpreader.Reader("/d/MapData/EARS/kivu.shp")
+
         else:
             # reader2 = shpreader.Reader("/d/faults/CFM/traces/shp/CFM5.3_traces.shp")
             reader = shpreader.Reader("/d/faults/Shapefile/QFaults.shp")
@@ -168,19 +179,15 @@ def mapBackground(bg, minlon, maxlon, minlat, maxlat, zoomLevel, title, img=None
         # ax.add_feature(shape_feature2)
     
     # scale_bar(ax, location, length, metres_per_unit=1000, unit_name='km',
-    #               tol=0.01, angle=0, color='black', linewidth=5, text_offset=0.01,
-    #               ha='center', va='bottom', plot_kwargs=None, text_kwargs=None,
-    #               **kwargs):
-    #scale_bar(ax, (.1,.1), scalebar,linewidth=0.5)
+    #                tol=0.01, angle=0, color='black', linewidth=5, text_offset=0.01,
+    #                ha='center', va='bottom', plot_kwargs=None, text_kwargs=None)
+    if scalebar:
+        scale_bar(ax, (.1,.1), scalebar,linewidth=0.5)
     
-    if not vmin==None:
-        print('plotting image')
-        img_hndl = ax.imshow(img,vmin=vmin,vmax=vmax,cmap='RdBu_r', origin='upper', transform=ccrs.PlateCarree(), extent=[minlon, maxlon, minlat, maxlat],zorder=10)
-        plt.colorbar(img_hndl,fraction=0.03, pad=0.05,orientation='horizontal')
 
     plt.title(title)
     plt.show()
-    return plt
+    return data_crs
 
 
 

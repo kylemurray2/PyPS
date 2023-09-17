@@ -36,7 +36,58 @@ def getTime(path,frame):
     Lat = pd.read_csv('out.csv')["Near Start Lat"][0]
     return int(hour),int(minute), Lon, Lat
    
+def writeGeotiff(array, lat_bounds, lon_bounds, output_file,epsg=4326):
+    '''
+    no data is zero
+    '''
+    from osgeo import gdal,osr
+    rows, cols = array.shape
 
+    # Define geotransform parameters (top-left corner coordinates, pixel size)
+    x_min, y_max = lon_bounds[0], lat_bounds[1]
+    x_max, y_min = lon_bounds[1], lat_bounds[0]
+    x_pixel_size = (x_max - x_min) / float(cols)
+    y_pixel_size = (y_max - y_min) / float(rows)
+    geotransform = (x_min, x_pixel_size, 0, y_max, 0, -y_pixel_size)
+
+    # Create the GeoTIFF file
+    driver = gdal.GetDriverByName('GTiff')
+    dataset = driver.Create(output_file, cols, rows, 1, gdal.GDT_Float32)
+
+    # Set the geotransform parameters and coordinate system (WGS84)
+    dataset.SetGeoTransform(geotransform)
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(epsg)  # WGS84
+    dataset.SetProjection(srs.ExportToWkt())
+
+    # Write the NumPy array to the GeoTIFF file and set NoData value
+    raster_band = dataset.GetRasterBand(1)
+    raster_band.WriteArray(array)
+    raster_band.SetNoDataValue(np.nan)  # Set zero values as NoData (transparent)
+
+    dataset.FlushCache()
+    dataset = None  # Close the file
+
+
+def readGeotiff(fileName):
+    '''
+    Reads a geotiff file
+    Outputs the array and lat/lon bounds
+    '''
+    from osgeo import gdal
+    dataset = gdal.Open(fileName, gdal.GA_ReadOnly)
+    array = dataset.ReadAsArray()
+    
+    geotransform = dataset.GetGeoTransform()
+    x_min = geotransform[0]
+    y_max = geotransform[3]
+    x_max = x_min + geotransform[1] * dataset.RasterXSize
+    y_min = y_max + geotransform[5] * dataset.RasterYSize
+    
+    # Optional: If the image is rotated or sheared, you may need to calculate the bounds differently
+    # Check the values of geotransform[2] and geotransform[4] to handle rotations/shearing if necessary
+    dataset = None
+    return array,x_min,x_max,y_min,y_max
 
 
 def reGridStack(inputImageStack,outputX,outputY):
@@ -133,6 +184,7 @@ def ll2pixel(lon_ifg,lat_ifg,lon,lat):
         for ii in np.arange(0,len(lat)):
             a = abs(lat_ifg-lat[ii])
             b = abs(lon_ifg-lon[ii])
+            
             c = a+b
             y,x = np.where(c==c.min()) # y is rows, x is columns
             
@@ -156,20 +208,25 @@ def phaseElev(img, hgt,msk, ymin, ymax, xmin, xmax,makePlot=False):
 #     hgt[np.isnan(hgt)] = 0
     p = img[ymin:ymax, xmin:xmax].copy()
     z = hgt[ymin:ymax, xmin:xmax].copy()
-    if makePlot:
-        from matplotlib import pyplot as plt
-        plt.figure();plt.scatter(z.ravel(),p.ravel(),.1)
-        plt.title('Phase-elevation dependence')
-        plt.xlabel('Elevation (m)')
-        plt.ylabel('Phase (rad)')
+
         
-    p[msk[ymin:ymax, xmin:xmax]==0] = 0
-    z[msk[ymin:ymax, xmin:xmax]==0] = 0
+    p = p[msk[ymin:ymax, xmin:xmax]!=0] 
+    z = z[msk[ymin:ymax, xmin:xmax]!=0]
     G = np.vstack([z.ravel(), np.ones((len(z.ravel()),1)).flatten()]).T
     Gg = np.dot( np.linalg.inv(np.dot(G.T,G)), G.T)
     moda = np.dot(Gg,p.ravel())
     phs_model = moda[0] * hgt.ravel() + moda[1]
     phs_model = phs_model.reshape(img.shape)
+    
+    if makePlot:
+        from matplotlib import pyplot as plt
+        plt.figure();plt.scatter(z.ravel(),p.ravel(),.1)
+        # plt.plot(z.ravel(),phs_model.ravel())
+
+        plt.title('Phase-elevation dependence')
+        plt.xlabel('Elevation (m)')
+        plt.ylabel('Phase (rad)')
+    
     return phs_model
 
 
@@ -456,7 +513,7 @@ def viewIFGstack(flip=True,chain=True):
     ''' look at all the ifgs with napari'''
     
     import numpy as np
-    import isceobj
+    import isce.components.isceobj as isceobj
     import napari
     
     ps = np.load('./ps.npy',allow_pickle=True).all()
@@ -485,8 +542,9 @@ def viewUNWstack(flip=True,chain=True):
     ''' look at all the ifgs with napari'''
     
     import numpy as np
-    import isceobj
+    import isce.components.isceobj as isceobj
     import napari
+    import isce
     
     ps = np.load('./ps.npy',allow_pickle=True).all()
     gam = np.load('./Npy/gam.npy')
@@ -526,7 +584,7 @@ def viewCORstack(flip=True,chain=True):
     ''' look at all the ifgs with napari'''
     
     import numpy as np
-    import isceobj
+    import isce.components.isceobj as isceobj
     import napari
     
     ps = np.load('./ps.npy',allow_pickle=True).all()
@@ -555,7 +613,7 @@ def viewCORstack(flip=True,chain=True):
     
     
 def getUNW(pair):
-    import isceobj
+    import isce.components.isceobj as isceobj
     gam = np.load('Npy/gam.npy')
     f = './merged/interferograms/' + pair + '/filt.unw'
     intImage = isceobj.createImage()
@@ -727,7 +785,7 @@ def butter(img,wavelength,nyq_freq=0.5,order=2):
     return filt
 
 def write_xml(filename,width,length,bands,dataType,scheme):
-    import isceobj
+    import isce.components.isceobj as isceobj    
     img=isceobj.createImage()
     img.setFilename(filename)
     img.setWidth(width)
@@ -745,9 +803,9 @@ def writeISCEimg(img,outName,nBands,width,length,dtype):
     quick way to write a file with an xml file. Automatically checks datatype
     img: image to write to file with an xml
     outname: name of output file not including the .xml extension
-    dtype: 'Float' or 'Complex'
+    dtype: 'Float' or 'Complex' or 'int'
     ''' 
-    import isceobj
+    import isce.components.isceobj as isceobj
     fidc=open(outName,"wb")
     fidc.write(img)
     #write out an xml file for it
@@ -756,6 +814,9 @@ def writeISCEimg(img,outName,nBands,width,length,dtype):
     if dtype=='Float':
         img = np.asarray(img,dtype=np.float32)
         out.dataType = 'FLOAT'
+    elif dtype=='int':
+        img = np.asarray(img,dtype=np.complex64)
+        out.dataType = 'int'
     elif dtype=='Complex':
         img = np.asarray(img,dtype=np.complex64)
         out.dataType = 'CFLOAT'
@@ -782,7 +843,7 @@ def filtAndCoherence(infileIFG,filtFileOut,corFileOut,filterStrength):
     
     fc.estCoherence(filtFileOut, corFileOut)
 
-def unwrap_snaphu(intfile,corfile,unwfile,length, width,rlks,alks):
+def unwrap_snaphu(int_file,cor_file,unw_file,length, width,rlks,alks):
     '''
     Inputs:
         intfile
@@ -799,21 +860,21 @@ def unwrap_snaphu(intfile,corfile,unwfile,length, width,rlks,alks):
     altitude = 800000.0
     earthRadius = 6371000.0
     wavelength = 0.056
-    defomax = 4.0
+    defomax = 2
     maxComponents = 20
     
     snp = Snaphu()
     snp.setInitOnly(False)
-    snp.setInput(intfile)
-    snp.setOutput(unwfile)
+    snp.setInput(int_file)
+    snp.setOutput(unw_file)
     snp.setWidth(width)
     snp.setCostMode('SMOOTH')
     snp.setEarthRadius(earthRadius)
     snp.setWavelength(wavelength)
     snp.setAltitude(altitude)
-    snp.setCorrfile(corfile)
-    snp.setInitMethod('MST')
-    snp.dumpConnectedComponents(True)
+    snp.setCorrfile(cor_file)
+    snp.setInitMethod('MCF')
+    # snp.dumpConnectedComponents(True)
     snp.setMaxComponents(maxComponents)
     snp.setDefoMaxCycles(defomax)
     snp.setRangeLooks(rlks)
@@ -821,15 +882,14 @@ def unwrap_snaphu(intfile,corfile,unwfile,length, width,rlks,alks):
     snp.setCorFileFormat('FLOAT_DATA')
     snp.prepare()
     snp.unwrap()
-    write_xml(unwfile, width, length, 2 , "FLOAT",'BIL')
+    write_xml(unw_file, width, length, 2 , "FLOAT",'BIL')
     return
 
-def getWaterMask(DEMfilename, lon_ifg, lat_ifg, outputfilename):
+def getWaterMask(DEMfilename, lon_filename, lat_filename, outputfilename):
     import createWaterMask as wm
     bbox = wm.dem2bbox(DEMfilename)
-    geo_file = wm.download_waterMask(bbox, DEMfilename, fill_value=-1)
-    # wm.geo2radar(geo_file, outputfilename, lat_ifg, lon_ifg)
-    return geo_file
+    geo_file = wm.download_waterMask(bbox, DEMfilename, fill_value=0)
+    wm.geo2radar(geo_file, outputfilename, lat_filename, lon_filename)
     
 def tsFilt(alld, dec_year, N=5, desiredPeriod = 1):
     '''
@@ -928,12 +988,14 @@ def invertVertHor(asc,des,psi_a,theta_a,psi_d,theta_d,smooth):
     losA = getLOSvec(psi_a,theta_a)
     losD = getLOSvec(psi_d,theta_d)
 
-    o = np.array([asc,des]).T
-    o = np.concatenate((o,np.array([0,0])),axis=0)
+    o = np.concatenate((np.array([asc,des]).T,np.array([0,0])),axis=0)
     # Define unit basis vectors
     mx = np.array([1,0,0])
-    my = np.array([0,1,0])
+    # my = np.array([0,1,0])
     mz = np.array([0,0,1])
+    
+    # A_nozero = np.array([[np.dot(losA,mx), np.dot(losA,mz)],
+    #               [np.dot(losD,mx), np.dot(losD,mz)]])
     
     A = np.array([[np.dot(losA,mx), np.dot(losA,mz)],
                   [np.dot(losD,mx), np.dot(losD,mz)],
@@ -948,7 +1010,12 @@ def invertVertHor(asc,des,psi_a,theta_a,psi_d,theta_d,smooth):
     
     Aa = np.dot( np.linalg.inv(np.dot(A.T,A)), A.T)
     vertHor = np.dot(Aa,o)
-    return vertHor
+    
+    # For L-curve (doesn't really make an L though)
+    # solution_norm = np.linalg.norm(vertHor)
+    # res_norm = np.linalg.norm( np.dot(A_nozero,vertHor) - o_nozero)
+    
+    return vertHor #, solution_norm, res_norm
 
 def geocode(filename):
     ''' Geocodes the filename and outputs geocoded image in that directory 
@@ -979,29 +1046,30 @@ def geocode(filename):
         
     geocodeIsce.runGeocode(inpsArgs, inpsArgs.prodlist, inpsArgs.bbox, inpsArgs.demfilename, is_offset_mode=False)
 
-def geocodeKM(img,method='linear'):
-    
+def geocodeKM(img,resolution,lon_ifg,lat_ifg,ps, method='linear'):
     '''
-    This is actually a geocode hack. but better to use the geocode function above
-    '''
+    resolution in meters (pixel)
     
+    '''    
     from scipy.interpolate import griddata 
-
-    ps = np.load('./ps.npy',allow_pickle=True).all()
+    import math
     
-    minlon = ps.lon_ifg.min()
-    maxlon = ps.lon_ifg.max()
-    minlat = ps.lat_ifg.min()
-    maxlat = ps.lat_ifg.max()
+    delta_latitude = ps.maxlat-ps.minlat
+    delta_longitude = ps.maxlon-ps.minlon
+    avgLat = (ps.minlat+ps.maxlat)/2
     
-    ny = int(ps.nyl*2)
-    nx = int(ny*1.3)
-
-    xx = np.linspace(minlon,maxlon,nx)
-    yy = np.linspace(minlat,maxlat,ny)
+    lonDist = 1000*delta_longitude * (40000 * np.cos( np.deg2rad(avgLat) ) / 360)
+    latDist = 111111 * delta_latitude  
+    
+    nx = int(lonDist//resolution)
+    ny = int(latDist//resolution)
+    xx = np.linspace(ps.minlon,ps.maxlon,nx)
+    yy = np.linspace(ps.minlat,ps.maxlat,ny)
     XX,YY = np.meshgrid(xx,yy)
-    imgRegrid = griddata((ps.lon_ifg.ravel(),ps.lat_ifg.ravel()), img.ravel(), (XX,YY), method=method)
+    
+    imgRegrid = griddata((lon_ifg.ravel(),lat_ifg.ravel()), img.ravel(), (XX,YY), method=method)
     imgRegrid = np.flipud(imgRegrid)
+    
     return imgRegrid
 
 def orderAxes(inputArray,nx,ny):
@@ -1016,3 +1084,83 @@ def orderAxes(inputArray,nx,ny):
     else:
         inputArray = np.moveaxis(inputArray,bigA,1)
     return inputArray
+
+def fitSine1d(t, signal):
+    """
+    Fits a signal with a model consisting of a cosine and a sine component using the least squares method. 
+   
+    Parameters:
+    t (array-like): Time vector.
+    signal (array-like): Signal to fit.
+   
+    Returns:
+    A tuple containing the frequency, amplitude, and phase shift of the fitted cosine and sine components.
+    """
+    from scipy.optimize import curve_fit
+
+    # Define the function to fit
+    def signal_model(t, freq_cos, freq_sin, amplitude_cos, amplitude_sin, phase_shift_cos, phase_shift_sin):
+        return amplitude_cos * np.cos(2 * np.pi * freq_cos * t + phase_shift_cos) + amplitude_sin * np.sin(2 * np.pi * freq_sin * t + phase_shift_sin)
+   
+    # Set some initial parameter values
+    freq_cos = 1
+    freq_sin = 2
+    amplitude_cos = np.mean(abs(signal))
+    amplitude_sin = np.mean(abs(signal))/2
+    phase_shift_cos = 0.0
+    phase_shift_sin = 0.0
+   
+    # Fit the data
+    popt, pcov = curve_fit(signal_model, t, signal, p0=[freq_cos, freq_sin, amplitude_cos, amplitude_sin, phase_shift_cos, phase_shift_sin],maxfev=5000)
+   
+    # Extract the fitting parameters
+    freq_cos, freq_sin, amplitude_cos, amplitude_sin, phase_shift_cos, phase_shift_sin = popt
+   
+    return freq_cos, freq_sin, amplitude_cos, amplitude_sin, phase_shift_cos, phase_shift_sin
+
+def vector2raster(shapefile_fn, raster_sample_fn, raster_out_fn, feature):
+    '''
+    Converts vector data from a shape file to raster data in geotiff file.
+    
+    shapefile_fn: File name for the shapefile that has the vector data
+    
+    raster_sample_fn: An example geotiff raster that you want the output raster 
+        to look like.
+        
+    raster_out_fn: name of the output raster geotiff 
+    
+    feature: The column in the geopandas dataframe that will be the values of 
+        the raster. Needs to be numbers/floats
+        
+    Returns: raster
+    
+    '''
+    # Convert polygons to raster
+    import geopandas as gpd
+    import rasterio
+    from rasterio import features
+    import cartopy.crs as ccrs
+    from osgeo import gdal
+    
+    projection = ccrs.PlateCarree()
+    dataframe = gpd.read_file(shapefile_fn).to_crs(projection)
+    
+    # Crop like this
+    #dataframe = dataframe.cx[minlon:maxlon,minlat:maxlat]
+
+    rst = rasterio.open(raster_sample_fn)
+    meta = rst.meta.copy()
+    meta.update(compress='lzw')
+
+    with rasterio.open(raster_out_fn, 'w+', **meta) as out:
+        out_arr = out.read(1)
+        # this is where we create a generator of geom, value pairs to use in rasterizing
+        shapes = ((geom,value) for geom, value in zip(dataframe.geometry, dataframe[feature].astype(np.float32)))
+        burned = features.rasterize(shapes=shapes, fill=0, out=out_arr, transform=out.transform)
+        out.write_band(1, burned)
+        
+    print('raster was saved to ' + raster_out_fn)
+        
+    ds = gdal.Open(raster_out_fn)
+    raster = ds.GetVirtualMemArray()
+    return raster 

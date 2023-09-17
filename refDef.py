@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 import scipy.signal as signal
 from PyPS2 import invertRates,makeMap,util
 
-xRef=40;yRef=900;disconnected=True;plotStuff=True;doTimeFilt=False;removePlane=False;order=1;skip=1;offset=False;phsElev=True;startID=0;stopID=-1;geoCode=False
+# xRef=40;yRef=900;disconnected=True;plotStuff=True;doTimeFilt=False;removePlane=False;order=1;skip=1;offset=False;phsElev=True;startID=0;stopID=-1;geoCode=False
 def refDef(xRef=False,yRef=False,disconnected=True, plotStuff=True, order=1, skip=5, doTimeFilt=False,offset=False,phsElev=False, startID=0,stopID=-1,geoCode=False):
     '''
     Loads the unwrapped interferograms, does the sbas-like inversion, converts to 
@@ -130,7 +130,7 @@ def refDef(xRef=False,yRef=False,disconnected=True, plotStuff=True, order=1, ski
     resstd = np.asarray(resstd,dtype=np.float32)
     ratesMasked = rates.copy()
     ratesMasked[msk==0] = np.nan
-    plt.figure();plt.plot(ps.dec_year,alld[:,897,46])
+    # plt.figure();plt.plot(ps.dec_year,alld[:,897,46])
 
     # if disconnected:
     #     #remove mean from each disconnected region
@@ -179,7 +179,6 @@ def refDef(xRef=False,yRef=False,disconnected=True, plotStuff=True, order=1, ski
     vmin,vmax = -3,3
     pad=0
 
-    ratesGeo[mskGeo==0] = np.nan
 
     if plotStuff:
         import cartopy.crs as ccrs
