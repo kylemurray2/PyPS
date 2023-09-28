@@ -1,4 +1,4 @@
-No longer maintained.  Recommended to use Aria/Dophin and MintPy
+No longer maintained.  Recommended to use Dolphin and MintPy
 
 PyPS (Python Persistent Scatterer) scripts for processing InSAR time series.
 Author: Kyle Murray
